@@ -1,6 +1,23 @@
 # Pixeltown
 
-Pixeltown is a retro-looking pixel-art city-building video game inspired by SimCity.
+Pixeltown is a retro-looking pixel-art city-building video game
+inspired by SimCity.
+
+## How to Build/Run PixelTown?
+
+This project is build using [xmake](https://xmake.io/guide/quick-start.html).
+
+To build it, run 
+
+```
+$ xmake
+```
+
+To run it, run
+
+```
+$ xmake run
+```
 
 ## License
 
