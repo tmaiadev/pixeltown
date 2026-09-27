@@ -5,7 +5,7 @@ inspired by SimCity.
 
 ## How to Build/Run PixelTown?
 
-This project is build using [xmake](https://xmake.io/guide/quick-start.html).
+This project is built by [xmake](https://xmake.io/guide/quick-start.html).
 
 To build it, run 
 
