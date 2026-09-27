@@ -12,6 +12,7 @@ void draw(void) {
 
 int main(void) {
     InitWindow(256, 256, TITLE);
+    SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
