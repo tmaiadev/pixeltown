@@ -1,6 +1,27 @@
-#import <stdio.h>
+#include "raylib.h"
+
+const char *TITLE = "Pixeltown";
+
+void update(void) {
+}
+
+void draw(void) {
+    ClearBackground(BLACK);
+    DrawText("Hello, world!", 0, 0, 16, WHITE);
+}
 
 int main(void) {
-    printf("Hello world");
+    InitWindow(256, 256, TITLE);
+    SetTargetFPS(60);
+
+    while (!WindowShouldClose()) {
+        update();
+
+        BeginDrawing();
+        draw();
+        EndDrawing();
+    }
+
+    CloseWindow();
     return 0;
 }
