@@ -1,21 +1,12 @@
 #include "raylib.h"
+#include "screen.h"
 #include "renderer.h"
 
 const char *TITLE = "Pixeltown";
 
-renderer_size_t renderer_get_size() {
-    int win_w = GetScreenWidth();
-    int win_h = GetScreenHeight();
-    float scale = (float)win_h / 256;
-    int w = win_w / scale;
-    int h = win_h / scale;
-
-    return (renderer_size_t){w,h};
-}
-
-static RenderTexture2D load_render_texture() {
-    renderer_size_t screen_size = renderer_get_size();
-    RenderTexture2D texture = LoadRenderTexture(screen_size.w, screen_size.h);
+static RenderTexture2D load_render_texture(void) {
+    Rectangle screen = screen_get_rect();
+    RenderTexture2D texture = LoadRenderTexture(screen.width, screen.height);
 
     return texture;
 }
