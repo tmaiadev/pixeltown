@@ -1,5 +1,6 @@
 #include "ani.h"
 #include "raylib.h"
+#include "scene.h"
 #include "text.h"
 #include "screen.h"
 #include <string.h>
@@ -16,12 +17,12 @@ char ani_id;
 ani_t ani;
 Font font;
 
-void scene_intro_init(void) {
+static void init(void) {
     ani_id = WAIT;
     ani = ani_create(1000);
 }
 
-void scene_intro_update(void) {
+static void update(void) {
     ani_update(&ani);
 
     if (ani.has_ended && ani_id < LOGO) {
@@ -30,7 +31,7 @@ void scene_intro_update(void) {
     }
 }
 
-void scene_intro_draw(void) {
+static void draw(void) {
     Rectangle screen = screen_get_rect();
 
     if (ani_id == TEXT_A) {
@@ -55,3 +56,9 @@ void scene_intro_draw(void) {
 
     DrawRectangle(0, 0, screen.width, screen.height, ColorAlpha(BLACK, alpha));
 }
+
+scene_t scene_intro = {
+    .init = init,
+    .update = update,
+    .draw = draw,
+};

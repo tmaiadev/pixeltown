@@ -1,17 +1,18 @@
 #include "renderer.h"
+#include "scene.h"
 #include "scene_intro.h"
 #include <stdio.h>
 
 void update(void) {
-    scene_intro_update();
+    scene_update();
 }
 
 void draw(void) {
-    scene_intro_draw();
+    scene_draw();
 }
 
 int main(void) {
-    scene_intro_init();
+    scene_init(scene_intro);
     renderer_init(update, draw);
     return 0;
 }
