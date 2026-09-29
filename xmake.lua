@@ -7,7 +7,7 @@ target("pixeltown")
     add_includedirs("src")
     add_files("src/*.c")
 
-    add_rules("utils.bin2c", {extensions = {".ttf"}})
-    add_files("assets/fonts/*.ttf")
+    add_rules("utils.bin2c", {extensions = {".ttf", ".png"}})
+    add_files("assets/fonts/*.ttf", "assets/images/*.png")
 
     add_packages("raylib")

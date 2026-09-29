@@ -43,7 +43,6 @@ static void draw(void) {
     float alpha = 1.0f;
     ani_t *curr_ani = &_anims[_curr_ani_i];
 
-
     if (curr_ani->elapsed_ms < 1000) {
         alpha = 1.0f - ((float)curr_ani->elapsed_ms / 1000);
     } else if (curr_ani->elapsed_ms < 3000) {
@@ -57,8 +56,12 @@ static void draw(void) {
     DrawRectangle(0, 0, screen.width, screen.height, ColorAlpha(BLACK, alpha));
 }
 
+static void unload(void) {
+}
+
 scene_t scene_intro = {
     .init = init,
     .update = update,
     .draw = draw,
+    .unload = unload
 };
