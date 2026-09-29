@@ -12,7 +12,9 @@ static RenderTexture2D load_render_texture(void) {
 }
 
 void renderer_init(void (update)(void), void (draw)(void)) {
+    SetConfigFlags(FLAG_FULLSCREEN_MODE);
     InitWindow(256, 256, TITLE);
+    SetExitKey(KEY_NULL);
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
 
