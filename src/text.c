@@ -18,6 +18,7 @@ void text_set_defaults(void) {
     _spacing = 1;
     _color = WHITE;
     _font = LoadFontFromMemory(".ttf", _font_ttf, sizeof(_font_ttf), _size, NULL, 0);
+    _defaults_called = true;
 }
 
 void text_set_size(int size) {
