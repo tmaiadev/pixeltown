@@ -1,4 +1,5 @@
 #include "ani.h"
+#include "input.h"
 #include "raylib.h"
 #include "scene.h"
 #include "scene_menu.h"
@@ -20,12 +21,20 @@ static void init(void) {
 static void update(void) {
     ani_update(&_anims[_curr_ani_i]);
 
+    // Go to next animation if current one has ended
     if (_anims[_curr_ani_i].has_ended) {
         _curr_ani_i += 1;
 
+        // If this is the last animation, initiate the Menu scene
         if (_curr_ani_i >= sizeof(_anims) / sizeof(_anims[0])) {
             scene_init(scene_menu);
+            return;
         }
+    }
+
+    // Skip animation
+    if (input_is_pressed(INPUT_ACCEPT) || input_is_pressed(INPUT_DISMISS)) {
+        _curr_ani_i += 1;
     }
 }
 
