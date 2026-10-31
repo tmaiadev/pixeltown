@@ -1,5 +1,6 @@
-const std = @import("std");
 const rl = @import("raylib");
+const window = @import("window.zig");
+const Canvas = @import("canvas.zig");
 
 fn update() void {}
 
@@ -7,18 +8,28 @@ fn draw() void {
     rl.drawText("Hello, world!", 0, 0, 32, .white);
 }
 
-pub fn main() void {
-    rl.initWindow(640, 480, "Pixeltown");
-    defer rl.closeWindow();
+pub fn main() !void {
+    window.init();
+    defer window.close();
 
-    rl.setTargetFPS(60);
+    var canvas = try Canvas.init(window.width(), window.height());
+    defer canvas.deinit();
 
-    while (!rl.windowShouldClose()) {
+    while (!window.shouldClose()) {
         update();
+
+        if (window.isResized()) {
+            try canvas.resize(window.width(), window.height());
+        }
+
+        canvas.begin();
+        rl.clearBackground(.black);
+        draw();
+        canvas.end();
 
         rl.beginDrawing();
         rl.clearBackground(.black);
-        draw();
+        canvas.draw(window.width(), window.height());
         rl.endDrawing();
     }
 }
