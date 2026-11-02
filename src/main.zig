@@ -1,6 +1,6 @@
 const rl = @import("raylib");
 const window = @import("window.zig");
-const Canvas = @import("canvas.zig");
+const canvas = @import("canvas.zig");
 
 fn update() void {}
 
@@ -12,14 +12,15 @@ pub fn main() !void {
     window.init();
     defer window.close();
 
-    var canvas = try Canvas.init(window.width(), window.height());
+    try canvas.init();
     defer canvas.deinit();
 
     while (!window.shouldClose()) {
         update();
 
         if (window.isResized()) {
-            try canvas.resize(window.width(), window.height());
+            canvas.deinit();
+            try canvas.init();
         }
 
         canvas.begin();
@@ -29,7 +30,7 @@ pub fn main() !void {
 
         rl.beginDrawing();
         rl.clearBackground(.black);
-        canvas.draw(window.width(), window.height());
+        canvas.draw();
         rl.endDrawing();
     }
 }
