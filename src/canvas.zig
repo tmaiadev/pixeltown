@@ -18,6 +18,10 @@ pub fn deinit() void {
     rl.unloadRenderTexture(target.?);
 }
 
+pub fn height() i32 {
+    return INNER_HEIGHT;
+}
+
 pub fn width() i32 {
     const f_width = @as(f32, @floatFromInt(window.width()));
     const f_height = @as(f32, @floatFromInt(window.height()));

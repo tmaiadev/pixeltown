@@ -1,14 +1,11 @@
 const rl = @import("raylib");
 const window = @import("window.zig");
 const canvas = @import("canvas.zig");
-
-fn update() void {}
-
-fn draw() void {
-    rl.drawText("Hello, world!", 0, 0, 32, .white);
-}
+const GameplayStage = @import("stage/gameplay.zig");
 
 pub fn main() !void {
+    var stage = GameplayStage.init();
+
     window.init();
     defer window.close();
 
@@ -16,7 +13,7 @@ pub fn main() !void {
     defer canvas.deinit();
 
     while (!window.shouldClose()) {
-        update();
+        stage.update();
 
         if (window.isResized()) {
             canvas.deinit();
@@ -25,7 +22,7 @@ pub fn main() !void {
 
         canvas.begin();
         rl.clearBackground(.black);
-        draw();
+        stage.draw();
         canvas.end();
 
         rl.beginDrawing();
