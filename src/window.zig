@@ -2,12 +2,16 @@ const rl = @import("raylib");
 
 pub fn init() void {
     rl.setConfigFlags(.{
-        .fullscreen_mode = true,
         .window_resizable = true,
-        .borderless_windowed_mode = true,
     });
+
     rl.initWindow(640, 480, "Pixeltown");
     rl.setTargetFPS(60);
+
+    const monitor = rl.getCurrentMonitor();
+    rl.setWindowSize(rl.getMonitorWidth(monitor), rl.getMonitorHeight(monitor));
+    rl.setWindowPosition(0, 0);
+    rl.toggleBorderlessWindowed();
 }
 
 pub fn close() void {
