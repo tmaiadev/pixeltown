@@ -33,7 +33,7 @@ pub fn update(self: *Gameplay) void {
     }
 
     if (rl.isKeyPressed(rl.KeyboardKey.minus)) {
-        if (camera.scale > 0.25) {
+        if (camera.scale > 0.25 and self.zoomAni == null) {
             self.zoomAni = Animation.init(0.25);
             self.zoomAniDirection = ZoomDirection.Out;
             self.zoomAniStartScale = camera.scale;
@@ -56,4 +56,5 @@ pub fn update(self: *Gameplay) void {
 
 pub fn draw(self: *const Gameplay) void {
     self.scenario.draw();
+    rl.drawFPS(0, 0);
 }

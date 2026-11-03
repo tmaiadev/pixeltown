@@ -1,15 +1,16 @@
+const std = @import("std");
 const rl = @import("raylib");
 const camera = @import("camera.zig");
 const Tile = @import("./tile.zig");
 const Scenario = @This();
 
-tileset: [64][64]Tile,
+tileset: [256][256]Tile,
 
 pub fn init() Scenario {
-    var tileset: [64][64]Tile = undefined;
+    var tileset: [256][256]Tile = undefined;
 
-    for (0..64) |y| {
-        for (0..64) |x| {
+    for (0..256) |y| {
+        for (0..256) |x| {
             tileset[y][x] = Tile.init();
         }
     }
@@ -20,14 +21,32 @@ pub fn init() Scenario {
 pub fn update(_: *Scenario) void {}
 
 pub fn draw(_: *const Scenario) void {
-    for (0..64) |y| {
-        for (0..64) |x| {
-            const int_x: i32 = @intCast(x);
-            const int_y: i32 = @intCast(y);
-            const tile_size: i32 = @floor(camera.scale * 16.0);
-            const color = if (@mod(int_x + int_y, 2) == 0) rl.Color.dark_green else rl.Color.green;
+    const cam_rect = camera.rect();
+    var tile_index: u32 = 0;
 
-            rl.drawRectangle(int_x * tile_size, int_y * tile_size, tile_size, tile_size, color);
+    for (0..256) |i_pos_y| {
+        tile_index += 1;
+
+        for (0..256) |i_pos_x| {
+            tile_index += 1;
+
+            const f_pos_x: f32 = @floatFromInt(i_pos_x);
+            const f_pos_y: f32 = @floatFromInt(i_pos_y);
+
+            const f_size: f32 = 16.0 * camera.scale;
+            const f_x: f32 = f_pos_x * f_size;
+            const f_y: f32 = f_pos_y * f_size;
+
+            const draw_rect = rl.Rectangle.init(f_x, f_y, f_size, f_size);
+
+            if (cam_rect.checkCollision(draw_rect)) {
+                const i_size: i32 = @intFromFloat(f_size);
+                const i_x: i32 = @intFromFloat(f_x);
+                const i_y: i32 = @intFromFloat(f_y);
+
+                const color = if (@mod(tile_index, 2) == 0) rl.Color.dark_green else rl.Color.green;
+                rl.drawRectangle(i_x, i_y, i_size, i_size, color);
+            }
         }
     }
 }
