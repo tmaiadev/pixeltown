@@ -5,18 +5,16 @@ const Animation = @This();
 duration: f32 = 0.00,
 elapsed: f32 = 0.00,
 loop: bool = false,
-hasEnded: bool,
-isPaused: bool,
+hasEnded: bool = false,
+isPaused: bool = false,
 
-pub fn init(self: *Animation, duration: f32) *Animation {
-    self.elapsed = 0.00;
-    self.duration = duration;
-    return self;
+pub fn init(duration: f32) Animation {
+    return .{ .elapsed = 0.00, .duration = duration };
 }
 
-pub fn update(self: *Animation) *Animation {
-    if (self.hasEnded || self.isPaused) {
-        return self;
+pub fn update(self: *Animation) void {
+    if (self.hasEnded or self.isPaused) {
+        return;
     }
 
     self.elapsed += rl.getFrameTime();
@@ -28,8 +26,6 @@ pub fn update(self: *Animation) *Animation {
         self.isPaused = true;
         self.hasEnded = true;
     }
-
-    return self;
 }
 
 pub fn getProgress(self: *Animation) f32 {
