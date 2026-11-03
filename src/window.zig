@@ -8,6 +8,9 @@ pub fn init() void {
     rl.initWindow(640, 480, "Pixeltown");
     rl.setTargetFPS(60);
 
+    // This is a "hack" to achieve fullscreen
+    // on Macbooks with Notch. Otherwise ConfigFlag.fullscreen_mode
+    // could have been used.
     const monitor = rl.getCurrentMonitor();
     rl.setWindowSize(rl.getMonitorWidth(monitor), rl.getMonitorHeight(monitor));
     rl.setWindowPosition(0, 0);
