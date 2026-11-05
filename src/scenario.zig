@@ -5,13 +5,9 @@ const Tile = @import("./tile.zig");
 const Scenario = @This();
 
 const NUM_TILE_ROW: i32 = 256;
+const TILE_SIZE: i32 = 16;
 
 tileset: [NUM_TILE_ROW][NUM_TILE_ROW]Tile,
-
-pub fn getMapSizeInPixels() i32 {
-    const f_total: f32 = @as(f32, @floatFromInt(NUM_TILE_ROW)) * camera.scale;
-    return @trunc(f_total);
-}
 
 pub fn init() Scenario {
     var tileset: [NUM_TILE_ROW][NUM_TILE_ROW]Tile = undefined;
@@ -40,7 +36,7 @@ pub fn draw(_: *const Scenario) void {
             const f_pos_x: f32 = @floatFromInt(i_pos_x);
             const f_pos_y: f32 = @floatFromInt(i_pos_y);
 
-            const f_size: f32 = 16.0 * camera.scale;
+            const f_size: f32 = @as(f32, @floatFromInt(TILE_SIZE)) * camera.scale;
             const f_x: f32 = f_pos_x * f_size;
             const f_y: f32 = f_pos_y * f_size;
 
@@ -59,4 +55,9 @@ pub fn draw(_: *const Scenario) void {
             }
         }
     }
+}
+
+pub fn getMapSize(_: *const Scenario) i32 {
+    const f_total: f32 = @as(f32, @floatFromInt(NUM_TILE_ROW)) * @as(f32, @floatFromInt(TILE_SIZE)) * camera.scale;
+    return @trunc(f_total);
 }

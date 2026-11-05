@@ -42,18 +42,36 @@ pub fn update(self: *Gameplay) void {
 
     if (rl.isKeyDown(.right) or rl.isKeyDown(.d)) {
         camera.x += 4;
+        const limit_x: i32 = self.scenario.getMapSize() - camera.width();
+
+        if (camera.x > limit_x) {
+            camera.x = limit_x;
+        }
     }
 
     if (rl.isKeyDown(.left) or rl.isKeyDown(.a)) {
         camera.x -= 4;
+
+        if (camera.x < 0) {
+            camera.x = 0;
+        }
     }
 
     if (rl.isKeyDown(.down) or rl.isKeyDown(.s)) {
         camera.y += 4;
+        const limit_y: i32 = self.scenario.getMapSize() - camera.height();
+
+        if (camera.y > limit_y) {
+            camera.y = limit_y;
+        }
     }
 
     if (rl.isKeyDown(.up) or rl.isKeyDown(.w)) {
         camera.y -= 4;
+
+        if (camera.y < 0) {
+            camera.y = 0;
+        }
     }
 
     if (self.zoomAni != null) {
