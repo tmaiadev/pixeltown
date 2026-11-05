@@ -24,7 +24,7 @@ pub fn init() Gameplay {
 pub fn update(self: *Gameplay) void {
     self.scenario.update();
 
-    if (rl.isKeyPressed(rl.KeyboardKey.equal)) {
+    if (rl.isKeyPressed(.equal)) {
         if (camera.scale < 2 and self.zoomAni == null) {
             self.zoomAni = Animation.init(0.25);
             self.zoomAniDirection = ZoomDirection.In;
@@ -32,12 +32,28 @@ pub fn update(self: *Gameplay) void {
         }
     }
 
-    if (rl.isKeyPressed(rl.KeyboardKey.minus)) {
+    if (rl.isKeyPressed(.minus)) {
         if (camera.scale > 0.25 and self.zoomAni == null) {
             self.zoomAni = Animation.init(0.25);
             self.zoomAniDirection = ZoomDirection.Out;
             self.zoomAniStartScale = camera.scale;
         }
+    }
+
+    if (rl.isKeyDown(.right) or rl.isKeyDown(.d)) {
+        camera.x += 4;
+    }
+
+    if (rl.isKeyDown(.left) or rl.isKeyDown(.a)) {
+        camera.x -= 4;
+    }
+
+    if (rl.isKeyDown(.down) or rl.isKeyDown(.s)) {
+        camera.y += 4;
+    }
+
+    if (rl.isKeyDown(.up) or rl.isKeyDown(.w)) {
+        camera.y -= 4;
     }
 
     if (self.zoomAni != null) {
