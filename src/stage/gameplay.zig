@@ -14,15 +14,22 @@ scenario: Scenario,
 zoomAni: ?Animation = null,
 zoomAniDirection: ZoomDirection = .In,
 zoomAniStartScale: ?f32 = null,
+firstBoot: bool = true,
 
 pub fn init() Gameplay {
-    return .{
-        .scenario = Scenario.init(),
-    };
+    return .{ .scenario = Scenario.init() };
 }
 
 pub fn update(self: *Gameplay) void {
     self.scenario.update();
+
+    if (self.firstBoot) {
+        self.firstBoot = false;
+
+        // Camera/Canvas cannot be modified in `.init()`
+        // because they have not been initialised yet.
+        center_camera(self);
+    }
 
     if (rl.isKeyPressed(.equal)) {
         if (camera.scale < 2 and self.zoomAni == null) {
@@ -91,4 +98,13 @@ pub fn update(self: *Gameplay) void {
 pub fn draw(self: *const Gameplay) void {
     self.scenario.draw();
     rl.drawFPS(0, 0);
+}
+
+fn center_camera(self: *const Gameplay) void {
+    const half_scenario: f32 = @as(f32, @floatFromInt(self.scenario.getMapSize())) / 2.0;
+    const half_cam_width: f32 = @as(f32, @floatFromInt(camera.width())) / 2.0;
+    const half_cam_height: f32 = @as(f32, @floatFromInt(camera.height())) / 2.0;
+
+    camera.x = @as(i32, @trunc(half_scenario - half_cam_width));
+    camera.y = @as(i32, @trunc(half_scenario - half_cam_height));
 }
