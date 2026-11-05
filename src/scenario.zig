@@ -4,13 +4,15 @@ const camera = @import("camera.zig");
 const Tile = @import("./tile.zig");
 const Scenario = @This();
 
-tileset: [256][256]Tile,
+const NUM_TILE_ROW: i32 = 256;
+
+tileset: [NUM_TILE_ROW][NUM_TILE_ROW]Tile,
 
 pub fn init() Scenario {
-    var tileset: [256][256]Tile = undefined;
+    var tileset: [NUM_TILE_ROW][NUM_TILE_ROW]Tile = undefined;
 
-    for (0..256) |y| {
-        for (0..256) |x| {
+    for (0..NUM_TILE_ROW) |y| {
+        for (0..NUM_TILE_ROW) |x| {
             tileset[y][x] = Tile.init();
         }
     }
@@ -24,10 +26,10 @@ pub fn draw(_: *const Scenario) void {
     const cam_rect = camera.rect();
     var tile_index: u32 = 0;
 
-    for (0..256) |i_pos_y| {
+    for (0..NUM_TILE_ROW) |i_pos_y| {
         tile_index += 1;
 
-        for (0..256) |i_pos_x| {
+        for (0..NUM_TILE_ROW) |i_pos_x| {
             tile_index += 1;
 
             const f_pos_x: f32 = @floatFromInt(i_pos_x);
