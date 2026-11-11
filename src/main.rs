@@ -1,9 +1,11 @@
 mod scenes;
+mod ui;
+mod utils;
 
 use macroquad::prelude::*;
-use scenes::{gameplay::GameplayScene, Scene};
+use scenes::{intro::IntroScene, Scene};
 
-const INTERNAL_HEIGHT: f32 = 480.0;
+pub const INTERNAL_HEIGHT: f32 = 480.0;
 
 fn window_conf() -> Conf {
     Conf {
@@ -15,8 +17,12 @@ fn window_conf() -> Conf {
     }
 }
 
+pub fn internal_width() -> f32 {
+    INTERNAL_HEIGHT * screen_width() / screen_height()
+}
+
 fn set_internal_camera() {
-    let width = INTERNAL_HEIGHT * screen_width() / screen_height();
+    let width = internal_width();
     set_camera(&Camera2D {
         zoom: vec2(2.0 / width, 2.0 / INTERNAL_HEIGHT),
         target: vec2(width / 2.0, INTERNAL_HEIGHT / 2.0),
@@ -26,11 +32,13 @@ fn set_internal_camera() {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut scene: Box<dyn Scene> = Box::new(GameplayScene);
+    let mut scene: Box<dyn Scene> = Box::new(IntroScene::new());
 
     loop {
         set_internal_camera();
-        scene.update();
+        if let Some(next) = scene.update() {
+            scene = next;
+        }
         scene.draw();
         next_frame().await;
     }
