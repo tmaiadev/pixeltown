@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use super::{gameplay::GameplayScene, Scene};
+use super::{menu::MenuScene, Scene};
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::{internal_width, INTERNAL_HEIGHT};
@@ -72,7 +72,7 @@ impl Scene for IntroScene {
         }
 
         if skip || self.logo_anim.has_ended() {
-            return Some(Box::new(GameplayScene));
+            return Some(Box::new(MenuScene::new()));
         }
         None
     }
