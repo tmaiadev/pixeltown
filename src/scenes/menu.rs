@@ -1,12 +1,13 @@
 use macroquad::prelude::*;
 
-use super::{gameplay::GameplayScene, Scene};
+use super::{terrain::TerrainScene, Scene};
 use crate::input::{Action, Device, Input};
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::{internal_width, INTERNAL_HEIGHT};
 
 const FADE_IN: f32 = 1.0;
+const FADE_OUT: f32 = 0.6;
 const LOGO_SCALE: f32 = 2.0;
 const LOGO_TOP: f32 = 80.0;
 const ITEMS_TOP: f32 = 290.0;
@@ -38,6 +39,7 @@ pub struct MenuScene {
     font: Font,
     logo: Texture2D,
     fade: Animation,
+    fade_out: Animation,
     selected: usize,
 }
 
@@ -58,22 +60,31 @@ impl MenuScene {
             font,
             logo,
             fade: Animation::new(FADE_IN).autostart(),
+            fade_out: Animation::new(FADE_OUT),
             selected: 0,
         }
     }
 
-    fn activate(&self) -> Option<Box<dyn Scene>> {
+    fn activate(&mut self) {
         match self.selected {
-            0 => Some(Box::new(GameplayScene)),
+            0 => self.fade_out.start(),
             3 => std::process::exit(0),
-            _ => None,
+            _ => {}
         }
     }
 }
 
 impl Scene for MenuScene {
     fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
-        self.fade.update(get_frame_time());
+        let dt = get_frame_time();
+        self.fade.update(dt);
+        if self.fade_out.has_started() {
+            self.fade_out.update(dt);
+            return self
+                .fade_out
+                .has_ended()
+                .then(|| Box::new(TerrainScene::new()) as Box<dyn Scene>);
+        }
         if !self.fade.has_ended() {
             return None;
         }
@@ -85,7 +96,8 @@ impl Scene for MenuScene {
             self.selected = wrap_selection(self.selected, 1, ITEMS.len());
         }
         if input.pressed(Action::Confirm) {
-            return self.activate();
+            self.activate();
+            return None;
         }
 
         let hovered = input
@@ -99,7 +111,7 @@ impl Scene for MenuScene {
         if input.pointer_clicked() {
             if let Some(i) = hovered {
                 self.selected = i;
-                return self.activate();
+                self.activate();
             }
         }
         None
@@ -108,7 +120,7 @@ impl Scene for MenuScene {
     fn draw(&self) {
         clear_background(BLACK);
         let center_x = internal_width() / 2.0;
-        let alpha = self.fade.progress();
+        let alpha = self.fade.progress() * (1.0 - self.fade_out.progress());
         let tint = Color::new(1.0, 1.0, 1.0, alpha);
 
         let size = self.logo.size() * LOGO_SCALE;
