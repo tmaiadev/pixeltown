@@ -24,7 +24,7 @@ pub fn internal_width() -> f32 {
     INTERNAL_HEIGHT * screen_width() / screen_height()
 }
 
-fn set_internal_camera() {
+pub fn set_internal_camera() {
     let width = internal_width();
     set_camera(&Camera2D {
         zoom: vec2(2.0 / width, 2.0 / INTERNAL_HEIGHT),
