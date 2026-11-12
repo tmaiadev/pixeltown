@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use super::{menu::MenuScene, Scene};
+use crate::input::Input;
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::{internal_width, INTERNAL_HEIGHT};
@@ -61,8 +62,7 @@ impl IntroScene {
 }
 
 impl Scene for IntroScene {
-    fn update(&mut self) -> Option<Box<dyn Scene>> {
-        let skip = get_last_key_pressed().is_some() || is_mouse_button_pressed(MouseButton::Left);
+    fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
         let dt = get_frame_time();
 
         if !self.presents.has_ended() {
@@ -71,7 +71,7 @@ impl Scene for IntroScene {
             self.logo_anim.update(dt);
         }
 
-        if skip || self.logo_anim.has_ended() {
+        if input.any_pressed() || self.logo_anim.has_ended() {
             return Some(Box::new(MenuScene::new()));
         }
         None

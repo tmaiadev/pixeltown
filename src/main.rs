@@ -1,8 +1,10 @@
+mod input;
 mod scenes;
 mod ui;
 mod utils;
 
 use macroquad::prelude::*;
+use input::Input;
 use scenes::{intro::IntroScene, Scene};
 
 pub const INTERNAL_HEIGHT: f32 = 480.0;
@@ -33,10 +35,12 @@ fn set_internal_camera() {
 #[macroquad::main(window_conf)]
 async fn main() {
     let mut scene: Box<dyn Scene> = Box::new(IntroScene::new());
+    let mut input = Input::new();
 
     loop {
         set_internal_camera();
-        if let Some(next) = scene.update() {
+        input.update();
+        if let Some(next) = scene.update(&input) {
             scene = next;
         }
         scene.draw();

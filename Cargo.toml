@@ -5,4 +5,5 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 
 [dependencies]
+gilrs = "0.11"
 macroquad = "0.4"

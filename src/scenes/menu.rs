@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use super::{gameplay::GameplayScene, Scene};
+use crate::input::{Action, Device, Input};
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::{internal_width, INTERNAL_HEIGHT};
@@ -33,17 +34,11 @@ fn item_at(point: Vec2, center_x: f32) -> Option<usize> {
     (0..ITEMS.len()).find(|&i| (point.y - item_y(i)).abs() <= ITEM_SPACING / 2.0)
 }
 
-fn internal_mouse_position() -> Vec2 {
-    let (x, y) = mouse_position();
-    vec2(x, y) * (INTERNAL_HEIGHT / screen_height())
-}
-
 pub struct MenuScene {
     font: Font,
     logo: Texture2D,
     fade: Animation,
     selected: usize,
-    last_mouse: Vec2,
 }
 
 impl MenuScene {
@@ -64,7 +59,6 @@ impl MenuScene {
             logo,
             fade: Animation::new(FADE_IN).autostart(),
             selected: 0,
-            last_mouse: internal_mouse_position(),
         }
     }
 
@@ -78,32 +72,35 @@ impl MenuScene {
 }
 
 impl Scene for MenuScene {
-    fn update(&mut self) -> Option<Box<dyn Scene>> {
+    fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
         self.fade.update(get_frame_time());
         if !self.fade.has_ended() {
             return None;
         }
 
-        if is_key_pressed(KeyCode::Up) || is_key_pressed(KeyCode::W) {
+        if input.pressed(Action::Up) {
             self.selected = wrap_selection(self.selected, -1, ITEMS.len());
         }
-        if is_key_pressed(KeyCode::Down) || is_key_pressed(KeyCode::S) {
+        if input.pressed(Action::Down) {
             self.selected = wrap_selection(self.selected, 1, ITEMS.len());
         }
-        if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::Space) {
+        if input.pressed(Action::Confirm) {
             return self.activate();
         }
 
-        let mouse = internal_mouse_position();
-        let hovered = item_at(mouse, internal_width() / 2.0);
-        if mouse != self.last_mouse {
-            self.last_mouse = mouse;
+        let hovered = input
+            .pointer()
+            .and_then(|p| item_at(p, internal_width() / 2.0));
+        if input.pointer_moved() && input.last_device() == Device::KeyboardMouse {
             if let Some(i) = hovered {
                 self.selected = i;
             }
         }
-        if is_mouse_button_pressed(MouseButton::Left) && hovered.is_some() {
-            return self.activate();
+        if input.pointer_clicked() {
+            if let Some(i) = hovered {
+                self.selected = i;
+                return self.activate();
+            }
         }
         None
     }
