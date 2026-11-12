@@ -1,4 +1,5 @@
 mod input;
+mod map;
 mod scenes;
 mod ui;
 mod utils;
