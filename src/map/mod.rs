@@ -1,3 +1,4 @@
+pub mod autotile;
 pub mod rng;
 
 use rng::{fbm, Rng};
