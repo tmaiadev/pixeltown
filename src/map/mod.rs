@@ -192,7 +192,7 @@ fn carve_river(land: &mut [bool], rng: &mut Rng, vertical: bool, flip: bool, sta
     let quarter = MAP_SIZE as u32 / 4;
     let mut across = rng.range(quarter, MAP_SIZE as u32 - quarter) as f32;
     let mut drift = 0.0f32;
-    let half_width = 1;
+    let half_width = 2;
 
     for along in start..MAP_SIZE {
         drift = (drift + (rng.next_f32() - 0.5) * 0.6).clamp(-1.0, 1.0);
