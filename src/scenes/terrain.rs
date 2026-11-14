@@ -43,7 +43,7 @@ pub struct TerrainScene {
     phase: Phase,
     fade_in: Animation,
     fade_out: Animation,
-    focus: usize,
+    focus: DockButton,
     focus_visible: bool,
     grid_visible: bool,
 }
@@ -69,7 +69,7 @@ impl TerrainScene {
             phase: Phase::FadingIn,
             fade_in: Animation::new(FADE_IN).autostart(),
             fade_out: Animation::new(FADE_OUT),
-            focus: dock::GENERATE,
+            focus: DockButton::Generate,
             focus_visible: false,
             grid_visible: false,
         }
@@ -106,9 +106,9 @@ impl TerrainScene {
         }
     }
 
-    fn activate(&mut self, button: usize) {
+    fn activate(&mut self, button: DockButton) {
         self.error = None;
-        match DockButton::at(button) {
+        match button {
             DockButton::Terrain(kind) => {
                 self.selected = kind;
                 self.generate();
@@ -134,9 +134,9 @@ impl TerrainScene {
         }
         if input.pointer_clicked() {
             let dock = dock::layout(viewport.x, viewport.y);
-            if let Some(i) = input.pointer().and_then(|p| dock.button_at(p)) {
-                self.focus = i;
-                self.activate(i);
+            if let Some(button) = input.pointer().and_then(|p| dock.button_at(p)) {
+                self.focus = button;
+                self.activate(button);
             }
         }
     }

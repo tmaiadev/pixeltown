@@ -6,9 +6,8 @@ use crate::ui::panel::{draw_button, draw_panel, rgb, with_alpha, ButtonState, TE
 use crate::ui::text::draw_text_centered;
 
 const TYPE_COUNT: usize = TerrainType::ALL.len();
-pub const GENERATE: usize = TYPE_COUNT;
-pub const ACCEPT: usize = TYPE_COUNT + 1;
-pub const BUTTON_COUNT: usize = TYPE_COUNT + 2;
+const GENERATE: usize = TYPE_COUNT;
+const BUTTON_COUNT: usize = TYPE_COUNT + 2;
 
 const PAD: f32 = 8.0;
 const GAP: f32 = 6.0;
@@ -34,12 +33,18 @@ pub enum DockButton {
 }
 
 impl DockButton {
-    pub fn at(index: usize) -> Self {
-        match index {
-            GENERATE => Self::Generate,
-            ACCEPT => Self::Accept,
-            i => Self::Terrain(TerrainType::ALL[i]),
-        }
+    // Terrain types first, in `TerrainType::ALL` order, then the actions.
+    pub const ALL: [DockButton; BUTTON_COUNT] = [
+        DockButton::Terrain(TerrainType::Inland),
+        DockButton::Terrain(TerrainType::Island),
+        DockButton::Terrain(TerrainType::Archipelago),
+        DockButton::Terrain(TerrainType::Seaside),
+        DockButton::Generate,
+        DockButton::Accept,
+    ];
+
+    fn index(self) -> usize {
+        Self::ALL.iter().position(|&b| b == self).expect("every button is listed in ALL")
     }
 }
 
@@ -55,8 +60,8 @@ pub struct Dock {
 }
 
 impl Dock {
-    pub fn button_at(&self, point: Vec2) -> Option<usize> {
-        self.buttons.iter().position(|b| b.contains(point))
+    pub fn button_at(&self, point: Vec2) -> Option<DockButton> {
+        self.buttons.iter().position(|b| b.contains(point)).map(|i| DockButton::ALL[i])
     }
 }
 
@@ -137,14 +142,16 @@ fn place_action_row(actions: &mut [Rect], left: f32, y: f32, inner_w: f32) {
     actions[1] = button(left + w + GAP, y, w);
 }
 
-pub fn move_focus(focus: usize, action: Action) -> usize {
-    match action {
-        Action::Left => (focus + BUTTON_COUNT - 1) % BUTTON_COUNT,
-        Action::Right => (focus + 1) % BUTTON_COUNT,
-        Action::Up | Action::Down if focus >= GENERATE => focus - GENERATE,
-        Action::Up | Action::Down => GENERATE + focus / 2,
-        _ => focus,
-    }
+pub fn move_focus(focus: DockButton, action: Action) -> DockButton {
+    let i = focus.index();
+    let next = match action {
+        Action::Left => (i + BUTTON_COUNT - 1) % BUTTON_COUNT,
+        Action::Right => (i + 1) % BUTTON_COUNT,
+        Action::Up | Action::Down if i >= GENERATE => i - GENERATE,
+        Action::Up | Action::Down => GENERATE + i / 2,
+        _ => i,
+    };
+    DockButton::ALL[next]
 }
 
 fn draw_icon(kind: TerrainType, origin: Vec2, alpha: f32) {
@@ -181,18 +188,18 @@ fn draw_icon(kind: TerrainType, origin: Vec2, alpha: f32) {
 pub struct DockView<'a> {
     pub font: &'a Font,
     pub selected: TerrainType,
-    pub hovered: Option<usize>,
-    pub focus: Option<usize>,
+    pub hovered: Option<DockButton>,
+    pub focus: Option<DockButton>,
     pub alpha: f32,
 }
 
 pub fn draw(dock: &Dock, view: &DockView) {
     draw_panel(dock.panel, view.alpha);
 
-    for (i, &rect) in dock.buttons.iter().enumerate() {
-        let hovered = view.hovered == Some(i);
-        let focused = view.focus == Some(i);
-        match DockButton::at(i) {
+    for (&rect, button) in dock.buttons.iter().zip(DockButton::ALL) {
+        let hovered = view.hovered == Some(button);
+        let focused = view.focus == Some(button);
+        match button {
             DockButton::Terrain(kind) => draw_terrain_button(rect, kind, view, hovered, focused),
             DockButton::Generate => {
                 draw_action_button(rect, "Generate", GENERATE_FILL, view, hovered, focused)
@@ -293,20 +300,29 @@ mod tests {
         let dock = layout(853.0, 480.0);
         let target = dock.buttons[GENERATE];
         let inside = vec2(target.x + target.w / 2.0, target.y + target.h / 2.0);
-        assert_eq!(dock.button_at(inside), Some(GENERATE));
+        assert_eq!(dock.button_at(inside), Some(DockButton::Generate));
         assert_eq!(dock.button_at(vec2(0.0, 0.0)), None);
     }
 
     #[test]
     fn focus_wraps_horizontally_and_jumps_between_groups() {
-        assert_eq!(move_focus(0, Action::Left), ACCEPT);
-        assert_eq!(move_focus(ACCEPT, Action::Right), 0);
-        assert_eq!(move_focus(2, Action::Right), 3);
-        assert_eq!(move_focus(GENERATE, Action::Up), 0);
-        assert_eq!(move_focus(3, Action::Down), ACCEPT);
-        assert_eq!(move_focus(1, Action::Up), GENERATE);
-        assert_eq!(move_focus(2, Action::Up), ACCEPT);
-        assert_eq!(move_focus(ACCEPT, Action::Down), 1);
-        assert_eq!(move_focus(2, Action::Confirm), 2);
+        use DockButton::{Accept, Generate, Terrain};
+        use TerrainType::{Archipelago, Inland, Island, Seaside};
+        assert_eq!(move_focus(Terrain(Inland), Action::Left), Accept);
+        assert_eq!(move_focus(Accept, Action::Right), Terrain(Inland));
+        assert_eq!(move_focus(Terrain(Archipelago), Action::Right), Terrain(Seaside));
+        assert_eq!(move_focus(Generate, Action::Up), Terrain(Inland));
+        assert_eq!(move_focus(Terrain(Seaside), Action::Down), Accept);
+        assert_eq!(move_focus(Terrain(Island), Action::Up), Generate);
+        assert_eq!(move_focus(Terrain(Archipelago), Action::Up), Accept);
+        assert_eq!(move_focus(Accept, Action::Down), Terrain(Island));
+        assert_eq!(move_focus(Terrain(Archipelago), Action::Confirm), Terrain(Archipelago));
+    }
+
+    #[test]
+    fn terrain_buttons_follow_terrain_type_order() {
+        for (button, kind) in DockButton::ALL.into_iter().zip(TerrainType::ALL) {
+            assert_eq!(button, DockButton::Terrain(kind));
+        }
     }
 }
