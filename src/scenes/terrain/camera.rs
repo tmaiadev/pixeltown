@@ -25,11 +25,12 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new() -> Self {
+    pub fn new(viewport: Vec2) -> Self {
+        let zoom = min_zoom(viewport);
         Self {
             center: Vec2::splat(MAP_PIXELS / 2.0),
-            zoom: 1.0,
-            target_zoom: 1.0,
+            zoom,
+            target_zoom: zoom,
         }
     }
 
@@ -109,14 +110,23 @@ mod tests {
     }
 
     #[test]
+    fn starts_zoomed_out_to_show_the_whole_map() {
+        let camera = Camera::new(VIEWPORT);
+        assert_eq!(camera.zoom(), min_zoom(VIEWPORT));
+    }
+
+    #[test]
     fn starts_centered_on_the_map() {
-        let camera = Camera::new();
-        assert_eq!(camera.view_center(), Vec2::splat(MAP_PIXELS / 2.0));
+        let camera = Camera::new(VIEWPORT);
+        let offset = (camera.view_center() - Vec2::splat(MAP_PIXELS / 2.0)).abs();
+        assert!(offset.max_element() <= 0.5 / camera.zoom());
     }
 
     #[test]
     fn panning_stops_at_every_edge() {
-        let mut camera = Camera::new();
+        let mut camera = Camera::new(VIEWPORT);
+        camera.zoom = 1.0;
+        camera.target_zoom = 1.0;
         for direction in [vec2(-1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, -1.0), vec2(0.0, 1.0)] {
             for _ in 0..200 {
                 moved(&mut camera, Motion { pan: direction, ..Default::default() });
@@ -130,7 +140,9 @@ mod tests {
 
     #[test]
     fn dragging_moves_the_map_with_the_pointer() {
-        let mut camera = Camera::new();
+        let mut camera = Camera::new(VIEWPORT);
+        camera.zoom = 1.0;
+        camera.target_zoom = 1.0;
         moved(&mut camera, Motion { drag: vec2(20.0, 0.0), ..Default::default() });
         assert!(camera.view_center().x < MAP_PIXELS / 2.0);
     }
@@ -156,7 +168,7 @@ mod tests {
 
     #[test]
     fn fluid_zoom_is_clamped() {
-        let mut camera = Camera::new();
+        let mut camera = Camera::new(VIEWPORT);
         moved(&mut camera, Motion { zoom_delta: 10.0, ..Default::default() });
         assert_eq!(camera.zoom(), MAX_ZOOM);
         moved(&mut camera, Motion { zoom_delta: -20.0, ..Default::default() });
@@ -165,7 +177,9 @@ mod tests {
 
     #[test]
     fn step_zoom_animates_towards_the_target() {
-        let mut camera = Camera::new();
+        let mut camera = Camera::new(VIEWPORT);
+        camera.zoom = 1.0;
+        camera.target_zoom = 1.0;
         camera.update(0.016, VIEWPORT, Motion { zoom_step: 1, ..Default::default() });
         assert!(camera.zoom() > 1.0 && camera.zoom() < 1.5);
         for _ in 0..120 {
@@ -176,7 +190,7 @@ mod tests {
 
     #[test]
     fn a_viewport_larger_than_the_map_centers_it() {
-        let mut camera = Camera::new();
+        let mut camera = Camera::new(VIEWPORT);
         let wide = vec2(1200.0, 480.0);
         camera.update(0.0, wide, Motion { zoom_delta: -10.0, ..Default::default() });
         camera.update(1.0, wide, Motion { pan: vec2(1.0, 0.0), ..Default::default() });
@@ -185,12 +199,12 @@ mod tests {
 
     #[test]
     fn visible_tiles_cover_the_viewport_and_stay_in_bounds() {
-        let camera = Camera::new();
+        let camera = Camera::new(VIEWPORT);
         let (x0, y0, x1, y1) = camera.visible_tiles(VIEWPORT);
         assert!(x0 < MAP_SIZE / 2 && x1 > MAP_SIZE / 2);
         assert!(y0 < MAP_SIZE / 2 && y1 > MAP_SIZE / 2);
 
-        let mut far = Camera::new();
+        let mut far = Camera::new(VIEWPORT);
         far.update(0.0, VIEWPORT, Motion { zoom_delta: -10.0, ..Default::default() });
         let (x0, y0, x1, y1) = far.visible_tiles(VIEWPORT);
         assert_eq!((x0, x1), (0, MAP_SIZE));

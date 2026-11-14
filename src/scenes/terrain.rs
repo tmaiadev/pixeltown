@@ -70,7 +70,7 @@ impl TerrainScene {
             map,
             cells,
             selected,
-            camera: Camera::new(),
+            camera: Camera::new(vec2(internal_width(), INTERNAL_HEIGHT)),
             rng,
             phase: Phase::FadingIn,
             fade_in: Animation::new(FADE_IN).autostart(),
