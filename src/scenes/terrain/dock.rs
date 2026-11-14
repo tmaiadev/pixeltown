@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::input::{Action, Device};
+use crate::input::Action;
 use crate::map::TerrainType;
 use crate::ui::panel::{draw_button, draw_panel, rgb, with_alpha, ButtonState, TEXT};
 use crate::ui::text::draw_text_centered;
@@ -106,14 +106,6 @@ pub fn move_focus(focus: usize, action: Action) -> usize {
         Action::Up if focus >= GENERATE => focus - GENERATE,
         Action::Down if focus < GENERATE => GENERATE + focus / 2,
         _ => focus,
-    }
-}
-
-pub fn hint(device: Device) -> &'static str {
-    match device {
-        Device::KeyboardMouse => "WASD/RMB: pan   +/-/Wheel: zoom   TAB: select",
-        Device::Touch => "Two fingers: pan and zoom",
-        Device::Gamepad(_) => "R-Stick: pan   RT/LT: zoom   D-Pad: select",
     }
 }
 

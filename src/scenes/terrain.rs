@@ -7,8 +7,6 @@ use macroquad::prelude::*;
 use super::{gameplay::GameplayScene, Scene};
 use crate::input::{Action, Device, Input};
 use crate::map::{autotile, rng::Rng, Map, TerrainType, MAP_SIZE};
-use crate::ui::panel::{rgb, with_alpha};
-use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::{internal_width, set_internal_camera, INTERNAL_HEIGHT};
 use camera::{Camera, Motion, TILE_SIZE};
@@ -16,10 +14,6 @@ use dock::DockView;
 
 const FADE_IN: f32 = 1.0;
 const FADE_OUT: f32 = 0.8;
-const HINT_SIZE: u16 = 8;
-const HINT_GAP: f32 = 8.0;
-const HINT_MIN_MARGIN: f32 = 16.0;
-const HINT_COLOR: Color = rgb(240, 240, 255);
 const NAVIGATION: [Action; 4] = [Action::Up, Action::Down, Action::Left, Action::Right];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -173,16 +167,6 @@ impl TerrainScene {
             alpha,
         };
         dock::draw(&dock, &view);
-
-        let hint = dock::hint(self.device);
-        let width = measure_text(hint, Some(&self.font), HINT_SIZE, 1.0).width;
-        if width + 2.0 * HINT_MIN_MARGIN <= viewport.x {
-            let y = dock.panel.y - HINT_GAP - HINT_SIZE as f32 / 2.0;
-            let center = vec2(viewport.x / 2.0, y);
-            let shadow = with_alpha(BLACK, alpha);
-            draw_text_centered(&self.font, hint, center + vec2(1.0, 1.0), HINT_SIZE, shadow);
-            draw_text_centered(&self.font, hint, center, HINT_SIZE, with_alpha(HINT_COLOR, alpha));
-        }
     }
 }
 
