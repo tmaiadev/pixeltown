@@ -91,6 +91,8 @@ impl Input {
         if let Some(kind) = self.poll_gamepads() {
             self.last_device = Device::Gamepad(kind);
         }
+        // Diagonals and keyboard plus stick together must not pan faster than one direction.
+        self.frame.pan = self.frame.pan.clamp_length_max(1.0);
     }
 
     fn poll_mouse(&mut self) -> bool {
@@ -167,7 +169,7 @@ impl Input {
 
     fn poll_gamepads(&mut self) -> Option<GamepadKind> {
         let pad = self.gamepads.poll();
-        self.frame.pan = (self.frame.pan + pad.pan).clamp_length_max(1.0);
+        self.frame.pan += pad.pan;
         self.frame.zoom_step += pad.zoom_step;
         for action in pad.actions {
             self.press_nav(action);
