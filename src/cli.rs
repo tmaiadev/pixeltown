@@ -1,8 +1,9 @@
 use crate::scenes::{
-    gameplay::GameplayScene, intro::IntroScene, menu::MenuScene, terrain::TerrainScene, Scene,
+    gameplay::GameplayScene, intro::IntroScene, load_game::LoadGameScene, menu::MenuScene,
+    terrain::TerrainScene, Scene,
 };
 
-const USAGE: &str = "Usage: pixeltown [--windowed] [--show-fps] [--scene <intro|menu|terrain|gameplay>]";
+const USAGE: &str = "Usage: pixeltown [--windowed] [--show-fps] [--scene <intro|menu|load-game|terrain|gameplay>]";
 
 #[derive(Debug, Default, PartialEq)]
 pub struct Args {
@@ -15,6 +16,7 @@ pub struct Args {
 pub enum SceneName {
     Intro,
     Menu,
+    LoadGame,
     Terrain,
     Gameplay,
 }
@@ -24,6 +26,7 @@ impl SceneName {
         match self {
             SceneName::Intro => Box::new(IntroScene::new()),
             SceneName::Menu => Box::new(MenuScene::new()),
+            SceneName::LoadGame => Box::new(LoadGameScene::new()),
             SceneName::Terrain => Box::new(TerrainScene::new()),
             SceneName::Gameplay => Box::new(GameplayScene::resume()),
         }
@@ -33,6 +36,7 @@ impl SceneName {
         match name {
             "intro" => Ok(SceneName::Intro),
             "menu" => Ok(SceneName::Menu),
+            "load-game" => Ok(SceneName::LoadGame),
             "terrain" => Ok(SceneName::Terrain),
             "gameplay" => Ok(SceneName::Gameplay),
             _ => Err(format!("unknown scene '{name}'")),
@@ -84,6 +88,8 @@ mod tests {
         let args = parse(&["--windowed", "--scene", "terrain"]).unwrap();
         assert!(args.windowed);
         assert_eq!(args.scene, Some(SceneName::Terrain));
+        let args = parse(&["--scene", "load-game"]).unwrap();
+        assert_eq!(args.scene, Some(SceneName::LoadGame));
     }
 
     #[test]

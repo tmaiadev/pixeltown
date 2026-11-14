@@ -2,6 +2,7 @@ use crate::input::Input;
 
 pub mod gameplay;
 pub mod intro;
+pub mod load_game;
 pub mod menu;
 pub mod terrain;
 

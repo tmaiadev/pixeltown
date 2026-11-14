@@ -54,6 +54,7 @@ struct Frame {
     drag: Vec2,
     zoom_step: i32,
     zoom_delta: f32,
+    scroll: f32,
     grid_toggled: bool,
 }
 
@@ -111,7 +112,9 @@ impl Input {
         }
         let (_, wheel) = mouse_wheel();
         if wheel != 0.0 {
-            self.frame.zoom_delta -= wheel.clamp(-WHEEL_LIMIT, WHEEL_LIMIT) * WHEEL_SENSITIVITY;
+            let wheel = wheel.clamp(-WHEEL_LIMIT, WHEEL_LIMIT);
+            self.frame.zoom_delta -= wheel * WHEEL_SENSITIVITY;
+            self.frame.scroll -= wheel.signum();
             used = true;
         }
         used
@@ -228,6 +231,11 @@ impl Input {
 
     pub fn zoom_delta(&self) -> f32 {
         self.frame.zoom_delta
+    }
+
+    // Wheel notches this frame, positive scrolls down.
+    pub fn scroll(&self) -> f32 {
+        self.frame.scroll
     }
 
     pub fn grid_toggled(&self) -> bool {

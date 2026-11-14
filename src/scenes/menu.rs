@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use super::{terrain::TerrainScene, Scene};
+use super::{load_game::LoadGameScene, terrain::TerrainScene, Scene};
 use crate::input::{Action, Device, Input};
 use crate::ui::image::draw_texture_scaled;
 use crate::ui::text::draw_text_centered;
@@ -82,9 +82,16 @@ impl MenuScene {
 
     fn activate(&mut self) {
         match MenuItem::ALL[self.selected] {
-            MenuItem::StartNewGame => self.fade_out.start(),
+            MenuItem::StartNewGame | MenuItem::LoadGame => self.fade_out.start(),
             MenuItem::Exit => std::process::exit(0),
-            MenuItem::LoadGame | MenuItem::Options => {}
+            MenuItem::Options => {}
+        }
+    }
+
+    fn next_scene(&self) -> Box<dyn Scene> {
+        match MenuItem::ALL[self.selected] {
+            MenuItem::LoadGame => Box::new(LoadGameScene::new()),
+            _ => Box::new(TerrainScene::new()),
         }
     }
 }
@@ -95,10 +102,7 @@ impl Scene for MenuScene {
         self.fade_in.update(dt);
         if self.fade_out.has_started() {
             self.fade_out.update(dt);
-            return self
-                .fade_out
-                .has_ended()
-                .then(|| Box::new(TerrainScene::new()) as Box<dyn Scene>);
+            return self.fade_out.has_ended().then(|| self.next_scene());
         }
         if !self.fade_in.has_ended() {
             return None;
