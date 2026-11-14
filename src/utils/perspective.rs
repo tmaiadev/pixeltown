@@ -18,6 +18,14 @@ impl Perspective {
     pub fn lean(&self, ground: Vec2, height: f32) -> Vec2 {
         ((ground - self.center) * height / self.altitude).round()
     }
+
+    // Lifts a flat area to `height`; areas sharing an edge still share it once raised.
+    pub fn raise(&self, area: Rect, height: f32) -> Rect {
+        let min = area.point() + self.lean(area.point(), height);
+        let corner = area.point() + area.size();
+        let max = corner + self.lean(corner, height);
+        Rect::new(min.x, min.y, max.x - min.x, max.y - min.y)
+    }
 }
 
 // Stretches `source` into a band `width` pixels wide running from `from` to `to`.
@@ -90,6 +98,22 @@ mod tests {
     fn lean_snaps_to_whole_pixels() {
         let lean = perspective().lean(CENTER + vec2(123.0, 77.0), 7.0);
         assert_eq!(lean, lean.round());
+    }
+
+    #[test]
+    fn raising_grows_an_area_around_the_view_center() {
+        let area = Rect::new(CENTER.x - 100.0, CENTER.y - 50.0, 200.0, 100.0);
+        let raised = perspective().raise(area, 12.0);
+        assert_eq!(raised.center(), area.center());
+        assert!(raised.w > area.w && raised.h > area.h);
+    }
+
+    #[test]
+    fn raised_neighbors_stay_seamless() {
+        let p = perspective();
+        let left = p.raise(Rect::new(613.0, 280.0, 512.0, 512.0), 6.0);
+        let right = p.raise(Rect::new(1125.0, 280.0, 512.0, 512.0), 6.0);
+        assert_eq!(left.right(), right.left());
     }
 
     #[test]

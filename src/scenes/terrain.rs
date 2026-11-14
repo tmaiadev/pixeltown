@@ -22,6 +22,7 @@ const FADE_IN: f32 = 1.0;
 const FADE_OUT: f32 = 0.8;
 const WATER_FPS: f32 = 4.0;
 const GRID_COLOR: Color = Color::new(1.0, 1.0, 1.0, 0.25);
+const FOREST_SHADOW: Color = Color::new(0.0, 0.0, 0.0, 0.27);
 const NAVIGATION: [Action; 4] = [Action::Up, Action::Down, Action::Left, Action::Right];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,8 +40,11 @@ pub struct TerrainScene {
     map: Map,
     cells: Vec<autotile::Tile>,
     features: Vec<Option<(u8, u8)>>,
+    forests: Vec<Option<(u8, u8)>>,
     trees: Vec<autotile::TreeCell>,
-    chunks: ChunkCache,
+    forest_trunks: Vec<(u16, u16)>,
+    ground: ChunkCache,
+    canopy: ChunkCache,
     selected: TerrainType,
     camera: Camera,
     rng: Rng,
@@ -70,11 +74,11 @@ impl TerrainScene {
         let map = Map::generate(selected, rng.next_u64());
         let cells = autotile::tile_cells(&map);
         let features = autotile::feature_cells(&map);
+        let forests = autotile::forest_cells(&map);
         let trees = autotile::tree_cells(&map);
-        let chunks = ChunkCache::new();
-        chunks.render(&sheet, &nature, &cells, &features);
+        let forest_trunks = autotile::forest_trunks(&map);
 
-        Self {
+        let scene = Self {
             font: load_font(),
             sheet,
             nature,
@@ -82,8 +86,11 @@ impl TerrainScene {
             map,
             cells,
             features,
+            forests,
             trees,
-            chunks,
+            forest_trunks,
+            ground: ChunkCache::new(),
+            canopy: ChunkCache::new(),
             selected,
             camera: Camera::new(vec2(internal_width(), INTERNAL_HEIGHT)),
             rng,
@@ -95,15 +102,45 @@ impl TerrainScene {
             device: Device::KeyboardMouse,
             pointer: None,
             grid_visible: false,
-        }
+        };
+        scene.bake();
+        scene
     }
 
     fn generate(&mut self) {
         self.map = Map::generate(self.selected, self.rng.next_u64());
         self.cells = autotile::tile_cells(&self.map);
         self.features = autotile::feature_cells(&self.map);
+        self.forests = autotile::forest_cells(&self.map);
         self.trees = autotile::tree_cells(&self.map);
-        self.chunks.render(&self.sheet, &self.nature, &self.cells, &self.features);
+        self.forest_trunks = autotile::forest_trunks(&self.map);
+        self.bake();
+    }
+
+    // Animated tiles are left transparent in the ground layer and drawn every frame.
+    fn bake(&self) {
+        self.ground.render(|chunk| {
+            let tiles = || chunks::chunk_tiles(chunk).filter(|&(_, _, i)| !self.cells[i].is_animated());
+            for (x, y, i) in tiles() {
+                let (col, row) = autotile::animated_cell(self.cells[i], 0, 0);
+                self.sheet.draw_tile(col, row, x, y);
+            }
+            for (x, y, i) in tiles() {
+                if let Some((col, row)) = self.features[i] {
+                    self.nature.draw_tile(col as usize, row as usize, x, y);
+                }
+                if let Some((col, row)) = self.forests[i] {
+                    self.nature.draw_tile_tinted(col as usize, row as usize, x, y, FOREST_SHADOW);
+                }
+            }
+        });
+        self.canopy.render(|chunk| {
+            for (x, y, i) in chunks::chunk_tiles(chunk) {
+                if let Some((col, row)) = self.forests[i] {
+                    self.nature.draw_tile(col as usize, row as usize, x, y);
+                }
+            }
+        });
     }
 
     fn activate(&mut self, button: usize) {
@@ -148,7 +185,7 @@ impl TerrainScene {
 
         let visible = self.camera.visible_tiles(viewport);
         let (x0, y0, x1, y1) = visible;
-        self.chunks.draw(visible);
+        self.ground.draw(visible);
 
         let frame = self.water.frame();
         let animated = || {
@@ -167,7 +204,11 @@ impl TerrainScene {
             }
         }
 
-        trees::draw(&self.nature, &self.trees, visible, &self.camera.perspective(viewport));
+        let perspective = self.camera.perspective(viewport);
+        trees::draw_shadows(&self.nature, &self.trees, visible);
+        trees::draw_trunks(&self.nature, &self.forest_trunks, visible, &perspective);
+        self.canopy.draw_raised(visible, &perspective, trees::TREE_HEIGHT);
+        trees::draw_trees(&self.nature, &self.trees, visible, &perspective);
 
         if self.grid_visible {
             draw_grid(visible, self.camera.zoom());

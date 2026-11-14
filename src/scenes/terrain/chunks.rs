@@ -1,17 +1,15 @@
 use macroquad::prelude::*;
 
 use super::camera::TILE_SIZE;
-use crate::map::{autotile::{self, Tile}, MAP_SIZE};
+use crate::map::MAP_SIZE;
 use crate::set_internal_camera;
-use crate::utils::spritesheet::Spritesheet;
+use crate::utils::perspective::Perspective;
 
 const CHUNK_TILES: usize = 32;
 const CHUNKS: usize = MAP_SIZE / CHUNK_TILES;
 const CHUNK_PIXELS: f32 = CHUNK_TILES as f32 * TILE_SIZE;
 
-pub type Features = [Option<(u8, u8)>];
-
-// Static tiles are baked into one texture per chunk; animated tiles are left transparent.
+// A map-wide layer baked into one texture per chunk.
 pub struct ChunkCache {
     targets: Vec<RenderTarget>,
 }
@@ -28,7 +26,8 @@ impl ChunkCache {
         Self { targets }
     }
 
-    pub fn render(&self, sheet: &Spritesheet, nature: &Spritesheet, cells: &[Tile], features: &Features) {
+    // `bake` draws the given chunk; `chunk_tiles` lists what falls inside it.
+    pub fn render(&self, bake: impl Fn(usize)) {
         for (chunk, target) in self.targets.iter().enumerate() {
             let origin = chunk_origin(chunk);
             set_camera(&Camera2D {
@@ -38,38 +37,47 @@ impl ChunkCache {
                 ..Default::default()
             });
             clear_background(BLANK);
-
-            let tiles = chunk_tiles(chunk).filter(|&(_, _, i)| !cells[i].is_animated());
-            for (x, y, i) in tiles.clone() {
-                let (col, row) = autotile::animated_cell(cells[i], 0, 0);
-                sheet.draw_tile(col, row, x, y);
-            }
-            for (x, y, i) in tiles {
-                if let Some((col, row)) = features[i] {
-                    nature.draw_tile(col as usize, row as usize, x, y);
-                }
-            }
+            bake(chunk);
         }
         // clear_background is immediate, so a later clear must not land on the last chunk.
         set_internal_camera();
     }
 
-    pub fn draw(&self, (x0, y0, x1, y1): (usize, usize, usize, usize)) {
-        for cy in y0 / CHUNK_TILES..y1.div_ceil(CHUNK_TILES) {
-            for cx in x0 / CHUNK_TILES..x1.div_ceil(CHUNK_TILES) {
-                let chunk = cy * CHUNKS + cx;
-                let origin = chunk_origin(chunk);
-                draw_texture(&self.targets[chunk].texture, origin.x, origin.y, WHITE);
-            }
+    pub fn draw(&self, visible: (usize, usize, usize, usize)) {
+        for chunk in visible_chunks(visible) {
+            let origin = chunk_origin(chunk);
+            draw_texture(&self.targets[chunk].texture, origin.x, origin.y, WHITE);
         }
     }
+
+    pub fn draw_raised(&self, visible: (usize, usize, usize, usize), perspective: &Perspective, height: f32) {
+        for chunk in visible_chunks(visible) {
+            let origin = chunk_origin(chunk);
+            let area = perspective.raise(Rect::new(origin.x, origin.y, CHUNK_PIXELS, CHUNK_PIXELS), height);
+            draw_texture_ex(
+                &self.targets[chunk].texture,
+                area.x,
+                area.y,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(area.size()),
+                    ..Default::default()
+                },
+            );
+        }
+    }
+}
+
+fn visible_chunks((x0, y0, x1, y1): (usize, usize, usize, usize)) -> impl Iterator<Item = usize> {
+    (y0 / CHUNK_TILES..y1.div_ceil(CHUNK_TILES))
+        .flat_map(move |cy| (x0 / CHUNK_TILES..x1.div_ceil(CHUNK_TILES)).map(move |cx| cy * CHUNKS + cx))
 }
 
 fn chunk_origin(chunk: usize) -> Vec2 {
     vec2((chunk % CHUNKS) as f32, (chunk / CHUNKS) as f32) * CHUNK_PIXELS
 }
 
-fn chunk_tiles(chunk: usize) -> impl Iterator<Item = (f32, f32, usize)> + Clone {
+pub fn chunk_tiles(chunk: usize) -> impl Iterator<Item = (f32, f32, usize)> + Clone {
     let (cx, cy) = (chunk % CHUNKS * CHUNK_TILES, chunk / CHUNKS * CHUNK_TILES);
     (cy..cy + CHUNK_TILES).flat_map(move |y| {
         (cx..cx + CHUNK_TILES).map(move |x| (x as f32 * TILE_SIZE, y as f32 * TILE_SIZE, y * MAP_SIZE + x))

@@ -121,17 +121,44 @@ pub fn tile_cell(map: &Map, x: usize, y: usize) -> (usize, usize) {
 
 pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
     let index = match map.feature(x, y)? {
-        // Trees are drawn in perspective every frame, not baked with the ground.
-        Feature::Tree => return None,
         Feature::Rock => ROCK_START + variant(x, y, FEATURE_VARIANTS),
-        Feature::Forest => {
-            // The canopy texture spans FOREST_PERIOD tiles, so pick the slice by position.
-            let blob = BLOB_INDEX[forest_edge_mask(map, x, y) as usize] as usize;
-            let position = (y % FOREST_PERIOD) * FOREST_PERIOD + x % FOREST_PERIOD;
-            FOREST_START + blob * FOREST_PERIOD * FOREST_PERIOD + position
-        }
+        // Trees and forests are drawn in perspective, not baked with the ground.
+        Feature::Tree | Feature::Forest => return None,
     };
     Some(cell(index))
+}
+
+pub fn forest_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
+    if map.feature(x, y) != Some(Feature::Forest) {
+        return None;
+    }
+    // The canopy texture spans FOREST_PERIOD tiles, so pick the slice by position.
+    let blob = BLOB_INDEX[forest_edge_mask(map, x, y) as usize] as usize;
+    let position = (y % FOREST_PERIOD) * FOREST_PERIOD + x % FOREST_PERIOD;
+    Some(cell(FOREST_START + blob * FOREST_PERIOD * FOREST_PERIOD + position))
+}
+
+pub fn forest_cells(map: &Map) -> Vec<Option<(u8, u8)>> {
+    let mut cells = Vec::with_capacity(MAP_SIZE * MAP_SIZE);
+    for y in 0..MAP_SIZE {
+        for x in 0..MAP_SIZE {
+            cells.push(forest_cell(map, x, y).map(|(col, row)| (col as u8, row as u8)));
+        }
+    }
+    cells
+}
+
+// Only edge trunks can peek out from under the canopy, so inner tiles get none.
+pub fn forest_trunks(map: &Map) -> Vec<(u16, u16)> {
+    let mut trunks = Vec::new();
+    for y in 0..MAP_SIZE {
+        for x in 0..MAP_SIZE {
+            if map.feature(x, y) == Some(Feature::Forest) && forest_edge_mask(map, x, y) != 0 {
+                trunks.push((x as u16, y as u16));
+            }
+        }
+    }
+    trunks
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -278,10 +305,14 @@ mod tests {
     }
 
     #[test]
-    fn trees_are_not_baked_with_the_ground() {
-        let mut map = map_from(&["#"]);
+    fn trees_and_forests_are_not_baked_with_the_ground() {
+        let mut map = map_from(&["##"]);
         map.features[idx(0, 0)] = Some(Feature::Tree);
+        map.features[idx(1, 0)] = Some(Feature::Forest);
         assert_eq!(feature_cell(&map, 0, 0), None);
+        assert_eq!(feature_cell(&map, 1, 0), None);
+        assert_eq!(forest_cell(&map, 0, 0), None);
+        assert!(forest_cell(&map, 1, 0).is_some());
     }
 
     #[test]
@@ -301,7 +332,7 @@ mod tests {
     }
 
     fn forest_index(map: &Map, x: usize, y: usize) -> usize {
-        let (col, row) = feature_cell(map, x, y).unwrap();
+        let (col, row) = forest_cell(map, x, y).unwrap();
         row * SHEET_COLUMNS + col - FOREST_START
     }
 
@@ -325,6 +356,19 @@ mod tests {
         }
         let blob = BLOB_INDEX[N as usize] as usize;
         assert_eq!(forest_index(&map, 1, 1), blob * 4 + 3);
+    }
+
+    #[test]
+    fn forest_trunks_sit_only_on_edge_tiles() {
+        let mut map = map_from(&["#####", "#####", "#####", "#####", "#####"]);
+        for y in 1..4 {
+            for x in 1..4 {
+                map.features[idx(x, y)] = Some(Feature::Forest);
+            }
+        }
+        let trunks = forest_trunks(&map);
+        assert_eq!(trunks.len(), 8);
+        assert!(!trunks.contains(&(2, 2)));
     }
 
     #[test]

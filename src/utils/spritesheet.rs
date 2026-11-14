@@ -33,11 +33,15 @@ impl Spritesheet {
     }
 
     pub fn draw_tile(&self, col: usize, row: usize, x: f32, y: f32) {
+        self.draw_tile_tinted(col, row, x, y, WHITE);
+    }
+
+    pub fn draw_tile_tinted(&self, col: usize, row: usize, x: f32, y: f32, tint: Color) {
         draw_texture_ex(
             &self.texture,
             x,
             y,
-            WHITE,
+            tint,
             DrawTextureParams {
                 dest_size: Some(vec2(self.tile_size, self.tile_size)),
                 source: Some(Self::source(self.tile_size, col, row)),
