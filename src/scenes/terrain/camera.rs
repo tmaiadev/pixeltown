@@ -8,7 +8,7 @@ pub const MAX_ZOOM: f32 = 2.0;
 const ZOOM_LEVELS: [f32; 4] = [0.5, 1.0, 1.5, 2.0];
 const ZOOM_EPSILON: f32 = 1e-4;
 const ZOOM_SMOOTHING: f32 = 14.0;
-const PAN_SPEED: f32 = 240.0;
+const PAN_SPEED: f32 = 600.0;
 const MAP_PIXELS: f32 = MAP_SIZE as f32 * TILE_SIZE;
 
 #[derive(Clone, Copy, Default)]
