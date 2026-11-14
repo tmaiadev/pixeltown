@@ -83,7 +83,7 @@ impl MenuScene {
     fn activate(&mut self) {
         match MenuItem::ALL[self.selected] {
             MenuItem::StartNewGame | MenuItem::LoadGame => self.fade_out.start(),
-            MenuItem::Exit => std::process::exit(0),
+            MenuItem::Exit => miniquad::window::order_quit(),
             MenuItem::Options => {}
         }
     }
