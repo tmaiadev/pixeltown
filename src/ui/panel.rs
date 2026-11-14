@@ -2,6 +2,7 @@ use macroquad::prelude::*;
 
 pub const TEXT: Color = rgb(240, 240, 255);
 pub const TEXT_DARK: Color = rgb(30, 24, 10);
+pub const ERROR: Color = rgb(232, 96, 80);
 const BORDER: Color = rgb(12, 12, 24);
 const PANEL_FILL: Color = rgb(34, 38, 66);
 const BEVEL_LIGHT: Color = rgb(78, 86, 138);

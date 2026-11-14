@@ -6,7 +6,7 @@ use macroquad::prelude::*;
 use super::{gameplay::GameplayScene, menu::MenuScene, Scene};
 use crate::input::{Action, Device, Input};
 use crate::map::save::{self, SaveEntry};
-use crate::ui::panel::{draw_button, draw_panel, draw_toggle, rgb, with_alpha, ButtonState, TEXT};
+use crate::ui::panel::{draw_button, draw_panel, draw_toggle, rgb, with_alpha, ButtonState, ERROR, TEXT};
 use crate::ui::text::{draw_text_centered, draw_text_left, draw_text_right, truncate, wrap};
 use crate::utils::animation::Animation;
 use crate::utils::assets::{load_font, load_icons};
@@ -28,7 +28,6 @@ const CONFIRM_MESSAGE: &str = "Are you sure you want to delete this save?";
 const LOAD_FILL: Color = rgb(62, 148, 76);
 const DELETE_FILL: Color = rgb(186, 52, 44);
 const OVERLAY: Color = Color::new(0.0, 0.0, 0.0, 0.6);
-const ERROR: Color = rgb(232, 96, 80);
 const SCROLL_TRACK: Color = rgb(20, 22, 40);
 const SCROLL_THUMB: Color = rgb(78, 86, 138);
 

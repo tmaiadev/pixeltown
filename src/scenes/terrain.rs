@@ -10,6 +10,8 @@ use crate::input::{Action, Device, Input};
 use crate::map::{rng::Rng, save, Map, TerrainType};
 use crate::map_view::camera::{self, Camera, Motion, MAP_CENTER};
 use crate::map_view::MapView;
+use crate::ui::panel::{with_alpha, ERROR};
+use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::utils::assets::load_font;
 use crate::{internal_width, set_internal_camera, INTERNAL_HEIGHT};
@@ -17,6 +19,8 @@ use dock::{DockButton, DockView};
 
 const FADE_IN: f32 = 1.0;
 const FADE_OUT: f32 = 1.2;
+const ERROR_SIZE: u16 = 8;
+const ERROR_GAP: f32 = 12.0;
 const NAVIGATION: [Action; 4] = [Action::Up, Action::Down, Action::Left, Action::Right];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,6 +38,7 @@ pub struct TerrainScene {
     camera: Camera,
     departure: (Vec2, f32),
     save: Option<PathBuf>,
+    error: Option<&'static str>,
     rng: Rng,
     phase: Phase,
     fade_in: Animation,
@@ -61,6 +66,7 @@ impl TerrainScene {
             departure: camera.view(),
             camera,
             save: None,
+            error: None,
             rng,
             phase: Phase::FadingIn,
             fade_in: Animation::new(FADE_IN).autostart(),
@@ -79,9 +85,14 @@ impl TerrainScene {
     }
 
     fn accept(&mut self) {
-        self.save = save::write(&self.map)
-            .inspect_err(|err| eprintln!("error: could not save map: {err}"))
-            .ok();
+        match save::write(&self.map) {
+            Ok(path) => self.save = Some(path),
+            Err(err) => {
+                eprintln!("error: could not save map: {err}");
+                self.error = Some("Could not save this map");
+                return;
+            }
+        }
         self.departure = self.camera.view();
         self.phase = Phase::FadingOut;
         self.fade_out.start();
@@ -100,6 +111,7 @@ impl TerrainScene {
     }
 
     fn activate(&mut self, button: usize) {
+        self.error = None;
         match DockButton::at(button) {
             DockButton::Terrain(kind) => {
                 self.selected = kind;
@@ -149,6 +161,10 @@ impl TerrainScene {
             alpha,
         };
         dock::draw(&dock, &view);
+        if let Some(error) = self.error {
+            let anchor = vec2(dock.panel.center().x, dock.panel.y - ERROR_GAP);
+            draw_text_centered(&self.font, error, anchor, ERROR_SIZE, with_alpha(ERROR, alpha));
+        }
     }
 }
 
