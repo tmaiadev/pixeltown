@@ -177,6 +177,10 @@ pub fn read(path: &Path) -> Result<Map, SaveError> {
     decode(&fs::read_to_string(path)?)
 }
 
+pub fn delete(path: &Path) -> io::Result<()> {
+    fs::remove_file(path)
+}
+
 fn list_in(dir: &Path) -> Vec<SaveEntry> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();

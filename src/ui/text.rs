@@ -42,3 +42,32 @@ pub fn truncate(font: &Font, text: &str, size: u16, max_width: f32) -> String {
     }
     String::new()
 }
+
+// Greedy word wrap; a word wider than `max_width` gets its own line.
+pub fn wrap(text: &str, max_width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if measure(&format!("{line} {word}")) <= max_width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrap_breaks_between_words() {
+        let measure = |t: &str| t.len() as f32;
+        assert_eq!(wrap("delete this save?", 11.0, measure), ["delete this", "save?"]);
+        assert_eq!(wrap("delete this save?", 100.0, measure), ["delete this save?"]);
+        assert_eq!(wrap("unbreakable a", 4.0, measure), ["unbreakable", "a"]);
+        assert!(wrap("", 10.0, measure).is_empty());
+    }
+}

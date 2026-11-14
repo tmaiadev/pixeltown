@@ -77,11 +77,27 @@ pub fn draw_button(rect: Rect, state: ButtonState, fill: Option<Color>, focused:
         ButtonState::SelectedHovered => SELECTED_HOVER,
     };
     bevel_box(rect, fill, lighten(fill), darken(fill), alpha);
-
     if focused {
-        let ring = with_alpha(FOCUS_RING, alpha);
-        draw_rectangle_lines(rect.x - 2.0, rect.y - 2.0, rect.w + 4.0, rect.h + 4.0, 2.0, ring);
+        draw_focus_ring(rect, alpha);
     }
+}
+
+// Pressed toggles sink: darker fill and the bevel flips.
+pub fn draw_toggle(rect: Rect, pressed: bool, hovered: bool, fill: Color, focused: bool, alpha: f32) {
+    if !pressed {
+        draw_button(rect, ButtonState::new(false, hovered), Some(fill), focused, alpha);
+        return;
+    }
+    let fill = if hovered { fill } else { darken(fill) };
+    bevel_box(rect, fill, darken(fill), lighten(fill), alpha);
+    if focused {
+        draw_focus_ring(rect, alpha);
+    }
+}
+
+fn draw_focus_ring(rect: Rect, alpha: f32) {
+    let ring = with_alpha(FOCUS_RING, alpha);
+    draw_rectangle_lines(rect.x - 2.0, rect.y - 2.0, rect.w + 4.0, rect.h + 4.0, 2.0, ring);
 }
 
 fn lighten(color: Color) -> Color {

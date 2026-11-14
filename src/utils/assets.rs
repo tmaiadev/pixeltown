@@ -1,5 +1,7 @@
 use macroquad::prelude::*;
 
+use super::spritesheet::Spritesheet;
+
 pub fn load_font() -> Font {
     let mut font = load_ttf_font_from_bytes(include_bytes!("../../assets/fonts/PressStart2P.ttf"))
         .expect("valid font");
@@ -15,4 +17,8 @@ pub fn load_texture(png: &[u8]) -> Texture2D {
 
 pub fn load_logo() -> Texture2D {
     load_texture(include_bytes!("../../assets/sprites/logo.png"))
+}
+
+pub fn load_icons() -> Spritesheet {
+    Spritesheet::from_png(include_bytes!("../../assets/sprites/icons.png"), 16.0)
 }
