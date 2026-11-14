@@ -46,6 +46,7 @@ pub struct Input {
     drag: Vec2,
     zoom_step: i32,
     zoom_delta: f32,
+    grid_toggled: bool,
 }
 
 impl Input {
@@ -65,6 +66,7 @@ impl Input {
             drag: Vec2::ZERO,
             zoom_step: 0,
             zoom_delta: 0.0,
+            grid_toggled: false,
         }
     }
 
@@ -78,6 +80,7 @@ impl Input {
         self.drag = Vec2::ZERO;
         self.zoom_step = 0;
         self.zoom_delta = 0.0;
+        self.grid_toggled = keyboard::grid_toggled();
 
         let mouse = internal_mouse_position();
         self.pointer = Some(mouse);
@@ -203,6 +206,10 @@ impl Input {
 
     pub fn zoom_delta(&self) -> f32 {
         self.zoom_delta
+    }
+
+    pub fn grid_toggled(&self) -> bool {
+        self.grid_toggled
     }
 }
 

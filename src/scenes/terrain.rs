@@ -17,6 +17,7 @@ use dock::DockView;
 const FADE_IN: f32 = 1.0;
 const FADE_OUT: f32 = 0.8;
 const WATER_FPS: f32 = 4.0;
+const GRID_COLOR: Color = Color::new(1.0, 1.0, 1.0, 0.25);
 const NAVIGATION: [Action; 4] = [Action::Up, Action::Down, Action::Left, Action::Right];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,7 @@ pub struct TerrainScene {
     focus_visible: bool,
     device: Device,
     pointer: Option<Vec2>,
+    grid_visible: bool,
 }
 
 impl TerrainScene {
@@ -77,6 +79,7 @@ impl TerrainScene {
             focus_visible: false,
             device: Device::KeyboardMouse,
             pointer: None,
+            grid_visible: false,
         }
     }
 
@@ -144,6 +147,20 @@ impl TerrainScene {
                 );
             }
         }
+
+        if self.grid_visible {
+            let thickness = 1.0 / zoom;
+            let (left, right) = (x0 as f32 * TILE_SIZE, x1 as f32 * TILE_SIZE);
+            let (top, bottom) = (y0 as f32 * TILE_SIZE, y1 as f32 * TILE_SIZE);
+            for x in x0..=x1 {
+                let px = x as f32 * TILE_SIZE;
+                draw_line(px, top, px, bottom, thickness, GRID_COLOR);
+            }
+            for y in y0..=y1 {
+                let py = y as f32 * TILE_SIZE;
+                draw_line(left, py, right, py, thickness, GRID_COLOR);
+            }
+        }
     }
 
     fn draw_ui(&self, viewport: Vec2, alpha: f32) {
@@ -202,6 +219,9 @@ impl Scene for TerrainScene {
         self.water.update(dt);
 
         if self.phase == Phase::Editing {
+            if input.grid_toggled() {
+                self.grid_visible = !self.grid_visible;
+            }
             self.handle_dock(input, viewport);
         }
         None

@@ -56,6 +56,10 @@ pub fn zoom_step() -> i32 {
     zoom_direction(pressed(ZOOM_IN_KEYS), pressed(ZOOM_OUT_KEYS))
 }
 
+pub fn grid_toggled() -> bool {
+    is_key_pressed(KeyCode::G)
+}
+
 fn axis(negative: bool, positive: bool) -> f32 {
     positive as i32 as f32 - negative as i32 as f32
 }
