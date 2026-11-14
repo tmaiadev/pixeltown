@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
 use macroquad::prelude::{vec2, Vec2};
 
@@ -39,20 +41,23 @@ pub struct Poll {
     pub zoom_step: i32,
 }
 
+#[derive(Default)]
+struct Sticks {
+    x_action: Option<Action>,
+    y_action: Option<Action>,
+    right: Vec2,
+}
+
 pub struct Gamepads {
     gilrs: Option<Gilrs>,
-    stick_x_action: Option<Action>,
-    stick_y_action: Option<Action>,
-    right_stick: Vec2,
+    sticks: HashMap<GamepadId, Sticks>,
 }
 
 impl Gamepads {
     pub fn new() -> Self {
         Self {
             gilrs: Gilrs::new().ok(),
-            stick_x_action: None,
-            stick_y_action: None,
-            right_stick: Vec2::ZERO,
+            sticks: HashMap::new(),
         }
     }
 
@@ -63,7 +68,12 @@ impl Gamepads {
         };
 
         while let Some(event) = gilrs.next_event() {
+            if event.event == EventType::Disconnected {
+                self.sticks.remove(&event.id);
+                continue;
+            }
             let kind = kind_of(gilrs, event.id);
+            let sticks = self.sticks.entry(event.id).or_default();
             match event.event {
                 EventType::ButtonPressed(button, _) => {
                     poll.any_pressed = true;
@@ -72,23 +82,23 @@ impl Gamepads {
                     poll.zoom_step += button_zoom(button);
                 }
                 EventType::AxisChanged(Axis::LeftStickX, value, _) => {
-                    poll.stick_moved(&mut self.stick_x_action, stick_x_action(value), kind);
+                    poll.stick_moved(&mut sticks.x_action, stick_x_action(value), kind);
                 }
                 EventType::AxisChanged(Axis::LeftStickY, value, _) => {
-                    poll.stick_moved(&mut self.stick_y_action, stick_y_action(value), kind);
+                    poll.stick_moved(&mut sticks.y_action, stick_y_action(value), kind);
                 }
                 EventType::AxisChanged(Axis::RightStickX, value, _) => {
-                    self.right_stick.x = value;
-                    poll.right_stick_moved(self.right_stick, kind);
+                    sticks.right.x = value;
+                    poll.right_stick_moved(sticks.right, kind);
                 }
                 EventType::AxisChanged(Axis::RightStickY, value, _) => {
-                    self.right_stick.y = -value;
-                    poll.right_stick_moved(self.right_stick, kind);
+                    sticks.right.y = -value;
+                    poll.right_stick_moved(sticks.right, kind);
                 }
                 _ => {}
             }
         }
-        poll.pan = apply_deadzone(self.right_stick);
+        poll.pan = self.sticks.values().map(|sticks| apply_deadzone(sticks.right)).sum();
         poll
     }
 }
