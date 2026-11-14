@@ -154,6 +154,10 @@ impl Tile {
             animated,
         }
     }
+
+    pub fn is_animated(&self) -> bool {
+        self.animated
+    }
 }
 
 fn is_animated(map: &Map, x: usize, y: usize) -> bool {

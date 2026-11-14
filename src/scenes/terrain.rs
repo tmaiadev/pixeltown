@@ -1,4 +1,5 @@
 mod camera;
+mod chunks;
 mod dock;
 
 use macroquad::miniquad::date;
@@ -13,6 +14,7 @@ use crate::utils::frame_animation::FrameAnimation;
 use crate::utils::spritesheet::Spritesheet;
 use crate::{internal_width, set_internal_camera, INTERNAL_HEIGHT};
 use camera::{Camera, Motion, TILE_SIZE};
+use chunks::ChunkCache;
 use dock::{DockButton, DockView};
 
 const FADE_IN: f32 = 1.0;
@@ -36,6 +38,7 @@ pub struct TerrainScene {
     map: Map,
     cells: Vec<autotile::Tile>,
     features: Vec<Option<(u8, u8)>>,
+    chunks: ChunkCache,
     selected: TerrainType,
     camera: Camera,
     rng: Rng,
@@ -65,6 +68,8 @@ impl TerrainScene {
         let map = Map::generate(selected, rng.next_u64());
         let cells = autotile::tile_cells(&map);
         let features = autotile::feature_cells(&map);
+        let chunks = ChunkCache::new();
+        chunks.render(&sheet, &nature, &cells, &features);
 
         Self {
             font: load_font(),
@@ -74,6 +79,7 @@ impl TerrainScene {
             map,
             cells,
             features,
+            chunks,
             selected,
             camera: Camera::new(vec2(internal_width(), INTERNAL_HEIGHT)),
             rng,
@@ -92,6 +98,7 @@ impl TerrainScene {
         self.map = Map::generate(self.selected, self.rng.next_u64());
         self.cells = autotile::tile_cells(&self.map);
         self.features = autotile::feature_cells(&self.map);
+        self.chunks.render(&self.sheet, &self.nature, &self.cells, &self.features);
     }
 
     fn activate(&mut self, button: usize) {
@@ -136,16 +143,22 @@ impl TerrainScene {
 
         let visible = self.camera.visible_tiles(viewport);
         let (x0, y0, x1, y1) = visible;
+        self.chunks.draw(visible);
+
         let frame = self.water.frame();
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let i = y * MAP_SIZE + x;
-                let (px, py) = (x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
-                let (col, row) = autotile::animated_cell(self.cells[i], frame, x + y);
-                self.sheet.draw_tile(col, row, px, py);
-                if let Some((col, row)) = self.features[i] {
-                    self.nature.draw_tile(col as usize, row as usize, px, py);
-                }
+        let animated = || {
+            (y0..y1)
+                .flat_map(move |y| (x0..x1).map(move |x| (x, y, y * MAP_SIZE + x)))
+                .filter(|&(_, _, i)| self.cells[i].is_animated())
+        };
+        // Each pass sticks to one spritesheet so consecutive tiles batch into one draw call.
+        for (x, y, i) in animated() {
+            let (col, row) = autotile::animated_cell(self.cells[i], frame, x + y);
+            self.sheet.draw_tile(col, row, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
+        }
+        for (x, y, i) in animated() {
+            if let Some((col, row)) = self.features[i] {
+                self.nature.draw_tile(col as usize, row as usize, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
             }
         }
 
