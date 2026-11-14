@@ -14,6 +14,11 @@ const EXTENSION: &str = "save";
 const USERDATA: &str = "userdata";
 const PREFIX: &str = "pixeltown-";
 
+#[derive(Deserialize)]
+struct VersionProbe {
+    version: u32,
+}
+
 #[derive(Serialize, Deserialize)]
 struct SaveFile {
     version: u32,
@@ -53,6 +58,16 @@ impl fmt::Display for SaveError {
             SaveError::UnsupportedVersion(v) => write!(f, "unsupported save version {v}"),
             SaveError::InvalidSize => write!(f, "map must be {MAP_SIZE}x{MAP_SIZE} tiles"),
             SaveError::InvalidTile(c) => write!(f, "unknown tile '{c}'"),
+        }
+    }
+}
+
+impl std::error::Error for SaveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SaveError::Io(err) => Some(err),
+            SaveError::Format(err) => Some(err),
+            _ => None,
         }
     }
 }
@@ -133,10 +148,12 @@ pub fn encode(map: &Map) -> String {
 }
 
 pub fn decode(text: &str) -> Result<Map, SaveError> {
-    let file: SaveFile = serde_json::from_str(text)?;
-    if file.version != VERSION {
-        return Err(SaveError::UnsupportedVersion(file.version));
+    // Checked before the full parse, so a future layout reports its version instead of a format error.
+    let probe: VersionProbe = serde_json::from_str(text)?;
+    if probe.version != VERSION {
+        return Err(SaveError::UnsupportedVersion(probe.version));
     }
+    let file: SaveFile = serde_json::from_str(text)?;
     if file.size != MAP_SIZE {
         return Err(SaveError::InvalidSize);
     }
@@ -165,7 +182,10 @@ pub fn userdata_dir() -> io::Result<PathBuf> {
 fn write_to(dir: &Path, map: &Map, time: NaiveDateTime) -> Result<PathBuf, SaveError> {
     fs::create_dir_all(dir)?;
     let path = dir.join(file_name(map.kind, time));
-    fs::write(&path, encode(map))?;
+    // Written aside and renamed, so a crash mid-write never leaves a truncated save.
+    let partial = path.with_extension("partial");
+    fs::write(&partial, encode(map))?;
+    fs::rename(&partial, &path)?;
     Ok(path)
 }
 
@@ -193,7 +213,7 @@ fn list_in(dir: &Path) -> Vec<SaveEntry> {
             Some(SaveEntry { path: entry.path(), modified })
         })
         .collect();
-    saves.sort_by(|a, b| b.modified.cmp(&a.modified));
+    saves.sort_by_key(|save| std::cmp::Reverse(save.modified));
     saves
 }
 
@@ -272,6 +292,9 @@ mod tests {
         assert!(matches!(decode(&bad), Err(SaveError::InvalidTile('?'))));
 
         assert!(matches!(decode("not json"), Err(SaveError::Format(_))));
+
+        let future = r#"{ "version": 2, "layers": [] }"#;
+        assert!(matches!(decode(future), Err(SaveError::UnsupportedVersion(2))));
     }
 
     #[test]
@@ -281,6 +304,7 @@ mod tests {
         let path = write_to(&dir, &map, time()).unwrap();
         assert_eq!(path, dir.join("pixeltown-seaside-2026-03-07_09-05-01.save"));
         assert_same(&read(&path).unwrap(), &map);
+        assert!(!path.with_extension("partial").exists());
         fs::remove_dir_all(dir).unwrap();
     }
 
