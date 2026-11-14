@@ -8,12 +8,15 @@ use super::{gameplay::GameplayScene, Scene};
 use crate::input::{Action, Device, Input};
 use crate::map::{autotile, rng::Rng, Map, TerrainType, MAP_SIZE};
 use crate::utils::animation::Animation;
+use crate::utils::frame_animation::FrameAnimation;
+use crate::utils::spritesheet::Spritesheet;
 use crate::{internal_width, set_internal_camera, INTERNAL_HEIGHT};
 use camera::{Camera, Motion, TILE_SIZE};
 use dock::DockView;
 
 const FADE_IN: f32 = 1.0;
 const FADE_OUT: f32 = 0.8;
+const WATER_FPS: f32 = 4.0;
 const NAVIGATION: [Action; 4] = [Action::Up, Action::Down, Action::Left, Action::Right];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -25,7 +28,8 @@ enum Phase {
 
 pub struct TerrainScene {
     font: Font,
-    sheet: Texture2D,
+    sheet: Spritesheet,
+    water: FrameAnimation,
     map: Map,
     cells: Vec<(u8, u8)>,
     selected: TerrainType,
@@ -47,11 +51,10 @@ impl TerrainScene {
                 .expect("valid font");
         font.set_filter(FilterMode::Nearest);
 
-        let sheet = Texture2D::from_file_with_format(
+        let sheet = Spritesheet::from_png(
             include_bytes!("../../assets/sprites/terrain.png"),
-            Some(ImageFormat::Png),
+            TILE_SIZE,
         );
-        sheet.set_filter(FilterMode::Nearest);
 
         let mut rng = Rng::new((date::now() * 1000.0) as u64);
         let selected = TerrainType::Inland;
@@ -61,6 +64,7 @@ impl TerrainScene {
         Self {
             font,
             sheet,
+            water: FrameAnimation::new(autotile::WATER_FRAMES, WATER_FPS),
             map,
             cells,
             selected,
@@ -127,25 +131,16 @@ impl TerrainScene {
         });
 
         let (x0, y0, x1, y1) = self.camera.visible_tiles(viewport);
-        let size = vec2(TILE_SIZE, TILE_SIZE);
+        let frame = self.water.frame();
         for y in y0..y1 {
             for x in x0..x1 {
-                let (col, row) = self.cells[y * MAP_SIZE + x];
-                draw_texture_ex(
-                    &self.sheet,
+                let cell = self.cells[y * MAP_SIZE + x];
+                let (col, row) = autotile::animated_cell(cell, frame, x + y);
+                self.sheet.draw_tile(
+                    col as usize,
+                    row as usize,
                     x as f32 * TILE_SIZE,
                     y as f32 * TILE_SIZE,
-                    WHITE,
-                    DrawTextureParams {
-                        dest_size: Some(size),
-                        source: Some(Rect::new(
-                            col as f32 * TILE_SIZE,
-                            row as f32 * TILE_SIZE,
-                            TILE_SIZE,
-                            TILE_SIZE,
-                        )),
-                        ..Default::default()
-                    },
                 );
             }
         }
@@ -204,6 +199,7 @@ impl Scene for TerrainScene {
             }
         };
         self.camera.update(dt, viewport, motion);
+        self.water.update(dt);
 
         if self.phase == Phase::Editing {
             self.handle_dock(input, viewport);

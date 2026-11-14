@@ -9,6 +9,10 @@ const WATER_START: usize = SAND_START + SAND_VARIANTS;
 const SHORE_START: usize = SHEET_COLUMNS;
 const GRASS_EDGE_START: usize = 4 * SHEET_COLUMNS;
 
+pub const WATER_FRAMES: usize = 4;
+const FRAMES_START_ROW: usize = 7;
+const FRAME_ROWS: usize = 4;
+
 const N: u8 = 1;
 const E: u8 = 2;
 const S: u8 = 4;
@@ -93,6 +97,23 @@ pub fn tile_cell(map: &Map, x: usize, y: usize) -> (usize, usize) {
     }
 }
 
+// `phase` desyncs open water between tiles; shores always follow the global frame.
+pub fn animated_cell((col, row): (u8, u8), frame: usize, phase: usize) -> (u8, u8) {
+    let (col, row) = (col as usize, row as usize);
+    let open_water = row == 0 && (WATER_START..WATER_START + WATER_VARIANTS).contains(&col);
+    let shore = (1..FRAME_ROWS).contains(&row);
+    let frame = match (open_water, shore) {
+        (true, _) => (frame + phase) % WATER_FRAMES,
+        (_, true) => frame % WATER_FRAMES,
+        _ => 0,
+    };
+    let row = match frame {
+        0 => row,
+        f => FRAMES_START_ROW + (f - 1) * FRAME_ROWS + row,
+    };
+    (col as u8, row as u8)
+}
+
 pub fn tile_cells(map: &Map) -> Vec<(u8, u8)> {
     let mut cells = Vec::with_capacity(MAP_SIZE * MAP_SIZE);
     for y in 0..MAP_SIZE {
@@ -174,6 +195,46 @@ mod tests {
         let (col, row) = tile_cell(&map, 1, 1);
         assert_eq!(row, 0);
         assert!((WATER_START..WATER_START + WATER_VARIANTS).contains(&col));
+    }
+
+    #[test]
+    fn frame_zero_keeps_the_original_cell() {
+        let water = (WATER_START as u8, 0);
+        let shore = (3, 2);
+        assert_eq!(animated_cell(water, 0, 0), water);
+        assert_eq!(animated_cell(shore, 0, 0), shore);
+    }
+
+    #[test]
+    fn static_cells_never_animate() {
+        for cell in [(0, 0), (SAND_START as u8, 0), (2, 4), (5, 6)] {
+            for frame in 0..WATER_FRAMES {
+                assert_eq!(animated_cell(cell, frame, 3), cell);
+            }
+        }
+    }
+
+    #[test]
+    fn animated_cells_stay_inside_the_sheet() {
+        let sheet_rows = FRAMES_START_ROW + (WATER_FRAMES - 1) * FRAME_ROWS;
+        for frame in 0..WATER_FRAMES {
+            for phase in 0..WATER_FRAMES {
+                for col in 0..SHEET_COLUMNS as u8 {
+                    for row in 0..4 {
+                        let (_, r) = animated_cell((col, row), frame, phase);
+                        assert!((r as usize) < sheet_rows);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn phase_offsets_open_water_but_not_shores() {
+        let water = (WATER_START as u8, 0);
+        let shore = (3, 2);
+        assert_ne!(animated_cell(water, 0, 1), animated_cell(water, 0, 0));
+        assert_eq!(animated_cell(shore, 1, 0), animated_cell(shore, 1, 2));
     }
 
     #[test]
