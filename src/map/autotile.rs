@@ -12,6 +12,8 @@ const GRASS_EDGE_START: usize = 4 * SHEET_COLUMNS;
 const FEATURE_VARIANTS: usize = 3;
 const TREE_START: usize = 0;
 const ROCK_START: usize = TREE_START + FEATURE_VARIANTS;
+const TREE_TRUNK: usize = ROCK_START + FEATURE_VARIANTS;
+const TREE_SHADOW: usize = TREE_TRUNK + 1;
 const FOREST_START: usize = SHEET_COLUMNS;
 const FOREST_PERIOD: usize = 2;
 
@@ -119,7 +121,8 @@ pub fn tile_cell(map: &Map, x: usize, y: usize) -> (usize, usize) {
 
 pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
     let index = match map.feature(x, y)? {
-        Feature::Tree => TREE_START + variant(x, y, FEATURE_VARIANTS),
+        // Trees are drawn in perspective every frame, not baked with the ground.
+        Feature::Tree => return None,
         Feature::Rock => ROCK_START + variant(x, y, FEATURE_VARIANTS),
         Feature::Forest => {
             // The canopy texture spans FOREST_PERIOD tiles, so pick the slice by position.
@@ -129,6 +132,39 @@ pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
         }
     };
     Some(cell(index))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TreeCell {
+    pub x: u16,
+    pub y: u16,
+    pub crown: (u8, u8),
+}
+
+pub fn tree_trunk() -> (usize, usize) {
+    cell(TREE_TRUNK)
+}
+
+pub fn tree_shadow() -> (usize, usize) {
+    cell(TREE_SHADOW)
+}
+
+// Row-major, so drawing in order paints lower trees over upper ones.
+pub fn tree_cells(map: &Map) -> Vec<TreeCell> {
+    let mut trees = Vec::new();
+    for y in 0..MAP_SIZE {
+        for x in 0..MAP_SIZE {
+            if map.feature(x, y) == Some(Feature::Tree) {
+                let (col, row) = cell(TREE_START + variant(x, y, FEATURE_VARIANTS));
+                trees.push(TreeCell {
+                    x: x as u16,
+                    y: y as u16,
+                    crown: (col as u8, row as u8),
+                });
+            }
+        }
+    }
+    trees
 }
 
 pub fn feature_cells(map: &Map) -> Vec<Option<(u8, u8)>> {
@@ -233,13 +269,34 @@ mod tests {
     fn features_pick_cells_from_their_own_section() {
         let mut map = map_from(&["###"]);
         assert_eq!(feature_cell(&map, 0, 0), None);
-        for (feature, start) in [(Feature::Tree, TREE_START), (Feature::Rock, ROCK_START)] {
-            for x in 0..3 {
-                map.features[idx(x, 0)] = Some(feature);
-                let (col, row) = feature_cell(&map, x, 0).unwrap();
-                assert_eq!(row, 0);
-                assert!((start..start + FEATURE_VARIANTS).contains(&col));
-            }
+        for x in 0..3 {
+            map.features[idx(x, 0)] = Some(Feature::Rock);
+            let (col, row) = feature_cell(&map, x, 0).unwrap();
+            assert_eq!(row, 0);
+            assert!((ROCK_START..ROCK_START + FEATURE_VARIANTS).contains(&col));
+        }
+    }
+
+    #[test]
+    fn trees_are_not_baked_with_the_ground() {
+        let mut map = map_from(&["#"]);
+        map.features[idx(0, 0)] = Some(Feature::Tree);
+        assert_eq!(feature_cell(&map, 0, 0), None);
+    }
+
+    #[test]
+    fn tree_cells_list_every_tree_in_row_major_order() {
+        let mut map = map_from(&["###", "###"]);
+        for (x, y) in [(2, 0), (0, 1), (1, 1)] {
+            map.features[idx(x, y)] = Some(Feature::Tree);
+        }
+        map.features[idx(0, 0)] = Some(Feature::Rock);
+        let trees = tree_cells(&map);
+        let positions: Vec<_> = trees.iter().map(|t| (t.x, t.y)).collect();
+        assert_eq!(positions, [(2, 0), (0, 1), (1, 1)]);
+        for tree in trees {
+            assert_eq!(tree.crown.1, 0);
+            assert!((TREE_START..TREE_START + FEATURE_VARIANTS).contains(&(tree.crown.0 as usize)));
         }
     }
 

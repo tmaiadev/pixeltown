@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use crate::map::MAP_SIZE;
+use crate::utils::perspective::Perspective;
 
 pub const TILE_SIZE: f32 = 16.0;
 pub const MAX_ZOOM: f32 = 2.0;
@@ -67,6 +68,10 @@ impl Camera {
 
     pub fn view_center(&self) -> Vec2 {
         (self.center * self.zoom).round() / self.zoom
+    }
+
+    pub fn perspective(&self, viewport: Vec2) -> Perspective {
+        Perspective::new(self.view_center(), viewport / self.zoom)
     }
 
     pub fn visible_tiles(&self, viewport: Vec2) -> (usize, usize, usize, usize) {

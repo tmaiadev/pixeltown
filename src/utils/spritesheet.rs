@@ -15,6 +15,14 @@ impl Spritesheet {
         }
     }
 
+    pub fn texture(&self) -> &Texture2D {
+        &self.texture
+    }
+
+    pub fn tile_size(&self) -> f32 {
+        self.tile_size
+    }
+
     pub fn source(tile_size: f32, col: usize, row: usize) -> Rect {
         Rect::new(
             col as f32 * tile_size,

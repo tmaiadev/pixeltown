@@ -1,6 +1,7 @@
 mod camera;
 mod chunks;
 mod dock;
+mod trees;
 
 use macroquad::miniquad::date;
 use macroquad::prelude::*;
@@ -38,6 +39,7 @@ pub struct TerrainScene {
     map: Map,
     cells: Vec<autotile::Tile>,
     features: Vec<Option<(u8, u8)>>,
+    trees: Vec<autotile::TreeCell>,
     chunks: ChunkCache,
     selected: TerrainType,
     camera: Camera,
@@ -68,6 +70,7 @@ impl TerrainScene {
         let map = Map::generate(selected, rng.next_u64());
         let cells = autotile::tile_cells(&map);
         let features = autotile::feature_cells(&map);
+        let trees = autotile::tree_cells(&map);
         let chunks = ChunkCache::new();
         chunks.render(&sheet, &nature, &cells, &features);
 
@@ -79,6 +82,7 @@ impl TerrainScene {
             map,
             cells,
             features,
+            trees,
             chunks,
             selected,
             camera: Camera::new(vec2(internal_width(), INTERNAL_HEIGHT)),
@@ -98,6 +102,7 @@ impl TerrainScene {
         self.map = Map::generate(self.selected, self.rng.next_u64());
         self.cells = autotile::tile_cells(&self.map);
         self.features = autotile::feature_cells(&self.map);
+        self.trees = autotile::tree_cells(&self.map);
         self.chunks.render(&self.sheet, &self.nature, &self.cells, &self.features);
     }
 
@@ -161,6 +166,8 @@ impl TerrainScene {
                 self.nature.draw_tile(col as usize, row as usize, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
             }
         }
+
+        trees::draw(&self.nature, &self.trees, visible, &self.camera.perspective(viewport));
 
         if self.grid_visible {
             draw_grid(visible, self.camera.zoom());
