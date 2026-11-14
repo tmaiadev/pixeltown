@@ -7,7 +7,7 @@ use macroquad::prelude::*;
 use crate::map::{autotile, Map, MAP_SIZE};
 use crate::utils::frame_animation::FrameAnimation;
 use crate::utils::spritesheet::Spritesheet;
-use camera::{Camera, TILE_SIZE};
+use camera::{Camera, TileRect, TILE_SIZE};
 use chunks::ChunkCache;
 
 const WATER_FPS: f32 = 4.0;
@@ -109,7 +109,7 @@ impl MapView {
     }
 }
 
-fn draw_grid((x0, y0, x1, y1): (usize, usize, usize, usize), zoom: f32) {
+fn draw_grid(TileRect { x0, y0, x1, y1 }: TileRect, zoom: f32) {
     let thickness = 1.0 / zoom;
     let (left, right) = (x0 as f32 * TILE_SIZE, x1 as f32 * TILE_SIZE);
     let (top, bottom) = (y0 as f32 * TILE_SIZE, y1 as f32 * TILE_SIZE);

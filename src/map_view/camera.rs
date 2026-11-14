@@ -12,6 +12,26 @@ const PAN_SPEED: f32 = 600.0;
 const MAP_PIXELS: f32 = MAP_SIZE as f32 * TILE_SIZE;
 pub const MAP_CENTER: Vec2 = Vec2::new(MAP_PIXELS / 2.0, MAP_PIXELS / 2.0);
 
+// Tiles from (x0, y0) inclusive to (x1, y1) exclusive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TileRect {
+    pub x0: usize,
+    pub y0: usize,
+    pub x1: usize,
+    pub y1: usize,
+}
+
+impl TileRect {
+    pub fn grow(self, margin: usize) -> Self {
+        Self {
+            x0: self.x0.saturating_sub(margin),
+            y0: self.y0.saturating_sub(margin),
+            x1: (self.x1 + margin).min(MAP_SIZE),
+            y1: (self.y1 + margin).min(MAP_SIZE),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct Motion {
     pub pan: Vec2,
@@ -91,16 +111,16 @@ impl Camera {
         Perspective::new(self.view_center(), viewport / self.zoom)
     }
 
-    pub fn visible_tiles(&self, viewport: Vec2) -> (usize, usize, usize, usize) {
+    pub fn visible_tiles(&self, viewport: Vec2) -> TileRect {
         let half = viewport / self.zoom / 2.0;
         let center = self.view_center();
         let to_tile = |world: f32, max: usize| ((world / TILE_SIZE).floor().max(0.0) as usize).min(max);
-        (
-            to_tile(center.x - half.x, MAP_SIZE),
-            to_tile(center.y - half.y, MAP_SIZE),
-            to_tile(center.x + half.x, MAP_SIZE - 1) + 1,
-            to_tile(center.y + half.y, MAP_SIZE - 1) + 1,
-        )
+        TileRect {
+            x0: to_tile(center.x - half.x, MAP_SIZE),
+            y0: to_tile(center.y - half.y, MAP_SIZE),
+            x1: to_tile(center.x + half.x, MAP_SIZE - 1) + 1,
+            y1: to_tile(center.y + half.y, MAP_SIZE - 1) + 1,
+        }
     }
 }
 
@@ -255,14 +275,20 @@ mod tests {
     #[test]
     fn visible_tiles_cover_the_viewport_and_stay_in_bounds() {
         let camera = Camera::new(VIEWPORT);
-        let (x0, y0, x1, y1) = camera.visible_tiles(VIEWPORT);
+        let TileRect { x0, y0, x1, y1 } = camera.visible_tiles(VIEWPORT);
         assert!(x0 < MAP_SIZE / 2 && x1 > MAP_SIZE / 2);
         assert!(y0 < MAP_SIZE / 2 && y1 > MAP_SIZE / 2);
 
         let mut far = Camera::new(VIEWPORT);
         far.update(0.0, VIEWPORT, Motion { zoom_delta: -10.0, ..Default::default() });
-        let (x0, y0, x1, y1) = far.visible_tiles(VIEWPORT);
+        let TileRect { x0, y0, x1, y1 } = far.visible_tiles(VIEWPORT);
         assert_eq!((x0, x1), (0, MAP_SIZE));
         assert!(y1 - y0 < MAP_SIZE);
+    }
+
+    #[test]
+    fn growing_a_tile_rect_stays_inside_the_map() {
+        let edge = TileRect { x0: 0, y0: 3, x1: MAP_SIZE, y1: 10 };
+        assert_eq!(edge.grow(2), TileRect { x0: 0, y0: 1, x1: MAP_SIZE, y1: 12 });
     }
 }

@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use super::camera::TILE_SIZE;
+use super::camera::{TileRect, TILE_SIZE};
 use crate::map::MAP_SIZE;
 use crate::set_internal_camera;
 use crate::utils::perspective::Perspective;
@@ -53,14 +53,14 @@ impl ChunkCache {
         &targets[frame % targets.len()].texture
     }
 
-    pub fn draw(&self, visible: (usize, usize, usize, usize), frame: usize) {
+    pub fn draw(&self, visible: TileRect, frame: usize) {
         for chunk in visible_chunks(visible) {
             let origin = chunk_origin(chunk);
             draw_texture(self.texture(chunk, frame), origin.x, origin.y, WHITE);
         }
     }
 
-    pub fn draw_raised(&self, visible: (usize, usize, usize, usize), perspective: &Perspective, height: f32) {
+    pub fn draw_raised(&self, visible: TileRect, perspective: &Perspective, height: f32) {
         for chunk in visible_chunks(visible) {
             let origin = chunk_origin(chunk);
             let area = perspective.raise(Rect::new(origin.x, origin.y, CHUNK_PIXELS, CHUNK_PIXELS), height);
@@ -78,7 +78,7 @@ impl ChunkCache {
     }
 }
 
-fn visible_chunks((x0, y0, x1, y1): (usize, usize, usize, usize)) -> impl Iterator<Item = usize> {
+fn visible_chunks(TileRect { x0, y0, x1, y1 }: TileRect) -> impl Iterator<Item = usize> {
     (y0 / CHUNK_TILES..y1.div_ceil(CHUNK_TILES))
         .flat_map(move |cy| (x0 / CHUNK_TILES..x1.div_ceil(CHUNK_TILES)).map(move |cx| cy * CHUNKS + cx))
 }

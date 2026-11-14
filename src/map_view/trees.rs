@@ -1,7 +1,7 @@
 use macroquad::prelude::*;
 
-use super::camera::TILE_SIZE;
-use crate::map::{autotile::{self, TreeCell}, MAP_SIZE};
+use super::camera::{TileRect, TILE_SIZE};
+use crate::map::autotile::{self, TreeCell};
 use crate::utils::perspective::{draw_strip, Perspective};
 use crate::utils::spritesheet::Spritesheet;
 
@@ -10,9 +10,7 @@ const TRUNK_WIDTH: f32 = 2.0;
 // Crowns lean out of their own tile, so trees just off screen can still show up.
 const MARGIN: usize = 1;
 
-pub type Visible = (usize, usize, usize, usize);
-
-pub fn draw_shadows(nature: &Spritesheet, trees: &[TreeCell], visible: Visible) {
+pub fn draw_shadows(nature: &Spritesheet, trees: &[TreeCell], visible: TileRect) {
     let (col, row) = autotile::tree_shadow();
     let half = nature.tile_size() / 2.0;
     for tree in shown(trees, |t| (t.x, t.y), visible) {
@@ -21,13 +19,13 @@ pub fn draw_shadows(nature: &Spritesheet, trees: &[TreeCell], visible: Visible) 
     }
 }
 
-pub fn draw_trunks(nature: &Spritesheet, trunks: &[(u16, u16)], visible: Visible, perspective: &Perspective) {
+pub fn draw_trunks(nature: &Spritesheet, trunks: &[(u16, u16)], visible: TileRect, perspective: &Perspective) {
     for &(x, y) in shown(trunks, |&t| t, visible) {
         draw_trunk(nature, ground(x, y), perspective);
     }
 }
 
-pub fn draw_trees(nature: &Spritesheet, trees: &[TreeCell], visible: Visible, perspective: &Perspective) {
+pub fn draw_trees(nature: &Spritesheet, trees: &[TreeCell], visible: TileRect, perspective: &Perspective) {
     let half = nature.tile_size() / 2.0;
     for tree in shown(trees, |t| (t.x, t.y), visible) {
         let top = draw_trunk(nature, ground(tree.x, tree.y), perspective);
@@ -49,9 +47,8 @@ fn ground(x: u16, y: u16) -> Vec2 {
 }
 
 // `items` must be in row-major order.
-fn shown<T>(items: &[T], position: impl Fn(&T) -> (u16, u16) + Copy, visible: Visible) -> impl Iterator<Item = &T> {
-    let (x0, y0) = (visible.0.saturating_sub(MARGIN), visible.1.saturating_sub(MARGIN));
-    let (x1, y1) = ((visible.2 + MARGIN).min(MAP_SIZE), (visible.3 + MARGIN).min(MAP_SIZE));
+fn shown<T>(items: &[T], position: impl Fn(&T) -> (u16, u16) + Copy, visible: TileRect) -> impl Iterator<Item = &T> {
+    let TileRect { x0, y0, x1, y1 } = visible.grow(MARGIN);
     let start = items.partition_point(|t| (position(t).1 as usize) < y0);
     items[start..]
         .iter()
