@@ -138,7 +138,7 @@ fn cells<T>(rows: &[String], parse: impl Fn(char) -> Result<T, SaveError>) -> Re
 pub fn encode(map: &Map) -> String {
     let file = SaveFile {
         version: VERSION,
-        terrain_type: map.kind,
+        terrain_type: map.terrain_type,
         seed: map.seed,
         size: MAP_SIZE,
         terrain: rows(|i| terrain_char(map.tiles[i], map.river[i])),
@@ -159,7 +159,7 @@ pub fn decode(text: &str) -> Result<Map, SaveError> {
     }
     let (tiles, river) = cells(&file.terrain, parse_terrain)?.into_iter().unzip();
     Ok(Map {
-        kind: file.terrain_type,
+        terrain_type: file.terrain_type,
         seed: file.seed,
         tiles,
         river,
@@ -181,7 +181,7 @@ pub fn userdata_dir() -> io::Result<PathBuf> {
 
 fn write_to(dir: &Path, map: &Map, time: NaiveDateTime) -> Result<PathBuf, SaveError> {
     fs::create_dir_all(dir)?;
-    let path = dir.join(file_name(map.kind, time));
+    let path = dir.join(file_name(map.terrain_type, time));
     // Written aside and renamed, so a crash mid-write never leaves a truncated save.
     let partial = path.with_extension("partial");
     fs::write(&partial, encode(map))?;
@@ -236,7 +236,7 @@ mod tests {
     }
 
     fn assert_same(a: &Map, b: &Map) {
-        assert_eq!(a.kind, b.kind);
+        assert_eq!(a.terrain_type, b.terrain_type);
         assert_eq!(a.seed, b.seed);
         assert!(a.tiles == b.tiles);
         assert!(a.river == b.river);

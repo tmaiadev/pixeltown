@@ -85,7 +85,7 @@ fn mask_where(x: usize, y: usize, matches: impl Fn(i32, i32) -> bool) -> u8 {
 }
 
 fn neighbor_mask(map: &Map, x: usize, y: usize, other: Terrain) -> u8 {
-    let own = map.get(x, y);
+    let own = map.terrain(x, y);
     mask_where(x, y, |nx, ny| map.get_or(nx, ny, own) == other)
 }
 
@@ -139,7 +139,7 @@ fn per_tile<T>(f: impl Fn(usize, usize) -> T) -> Vec<T> {
 }
 
 pub fn tile_cell(map: &Map, x: usize, y: usize) -> SpriteCell {
-    match map.get(x, y) {
+    match map.terrain(x, y) {
         Terrain::Water => cell(WATER_START + variant(x, y, WATER_VARIANTS)),
         Terrain::Sand => match neighbor_mask(map, x, y, Terrain::Water) {
             0 => cell(SAND_START + variant(x, y, SAND_VARIANTS)),
@@ -231,14 +231,14 @@ impl GroundSprite {
 }
 
 fn is_animated(map: &Map, x: usize, y: usize) -> bool {
-    match map.get(x, y) {
+    match map.terrain(x, y) {
         Terrain::Water => true,
         Terrain::Sand => {
             let (x, y) = (x as i32, y as i32);
             CARDINALS.into_iter().chain(DIAGONALS).any(|(dx, dy, _)| {
                 let (nx, ny) = (x + dx, y + dy);
                 Map::in_bounds(nx, ny)
-                    && map.get(nx as usize, ny as usize) == Terrain::Water
+                    && map.terrain(nx as usize, ny as usize) == Terrain::Water
                     && !map.is_river(nx as usize, ny as usize)
             })
         }
@@ -287,7 +287,7 @@ mod tests {
         }
         let features = vec![None; MAP_SIZE * MAP_SIZE];
         Map {
-            kind: TerrainType::Inland,
+            terrain_type: TerrainType::Inland,
             seed: 0,
             tiles,
             river,

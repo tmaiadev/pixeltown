@@ -84,7 +84,7 @@ enum Side {
 const SIDES: [Side; 4] = [Side::North, Side::South, Side::West, Side::East];
 
 pub struct Map {
-    kind: TerrainType,
+    terrain_type: TerrainType,
     seed: u64,
     tiles: Vec<Terrain>,
     river: Vec<bool>,
@@ -104,7 +104,7 @@ impl Map {
         let tiles = add_beaches(&land, seed);
         let features = place_features(&tiles, seed);
         Self {
-            kind,
+            terrain_type: kind,
             seed,
             tiles,
             river,
@@ -112,7 +112,7 @@ impl Map {
         }
     }
 
-    pub fn get(&self, x: usize, y: usize) -> Terrain {
+    pub fn terrain(&self, x: usize, y: usize) -> Terrain {
         self.tiles[idx(x, y)]
     }
 
@@ -130,7 +130,7 @@ impl Map {
 
     pub fn get_or(&self, x: i32, y: i32, fallback: Terrain) -> Terrain {
         if Self::in_bounds(x, y) {
-            self.get(x as usize, y as usize)
+            self.terrain(x as usize, y as usize)
         } else {
             fallback
         }
@@ -406,10 +406,10 @@ mod tests {
         let last = MAP_SIZE - 1;
         (0..MAP_SIZE)
             .map(|i| match side {
-                Side::North => map.get(i, 0),
-                Side::South => map.get(i, last),
-                Side::West => map.get(0, i),
-                Side::East => map.get(last, i),
+                Side::North => map.terrain(i, 0),
+                Side::South => map.terrain(i, last),
+                Side::West => map.terrain(0, i),
+                Side::East => map.terrain(last, i),
             })
             .collect()
     }
@@ -498,7 +498,7 @@ mod tests {
         for seed in SEEDS {
             let map = Map::generate(TerrainType::Archipelago, seed);
             assert!((land_ratio(&map) - 0.5).abs() < 0.08);
-            assert_ne!(map.get(MAP_SIZE / 2, MAP_SIZE / 2), Terrain::Water);
+            assert_ne!(map.terrain(MAP_SIZE / 2, MAP_SIZE / 2), Terrain::Water);
             for side in SIDES {
                 assert!(all_water(&edge_tiles(&map, side)));
             }
@@ -553,7 +553,7 @@ mod tests {
                 let map = Map::generate(kind, seed);
                 for y in 0..MAP_SIZE {
                     for x in 0..MAP_SIZE {
-                        let terrain = map.get(x, y);
+                        let terrain = map.terrain(x, y);
                         match map.feature(x, y) {
                             Some(Feature::Tree | Feature::Forest) => {
                                 assert_eq!(terrain, Terrain::Grass)
@@ -633,7 +633,7 @@ mod tests {
                 let map = Map::generate(kind, seed);
                 for y in 0..MAP_SIZE {
                     for x in 0..MAP_SIZE {
-                        if map.get(x, y) != Terrain::Grass {
+                        if map.terrain(x, y) != Terrain::Grass {
                             continue;
                         }
                         for (dx, dy) in NEIGHBORS {
@@ -652,7 +652,7 @@ mod tests {
             let map = Map::generate(kind, 3);
             for y in 0..MAP_SIZE as i32 {
                 for x in 0..MAP_SIZE as i32 {
-                    if map.get(x as usize, y as usize) != Terrain::Sand {
+                    if map.terrain(x as usize, y as usize) != Terrain::Sand {
                         continue;
                     }
                     let near_water = (-3..=3).any(|dy| {

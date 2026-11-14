@@ -66,11 +66,6 @@ impl Animation {
         self.elapsed
     }
 
-    #[allow(dead_code)]
-    pub fn duration(&self) -> f32 {
-        self.duration
-    }
-
     pub fn has_started(&self) -> bool {
         self.started
     }
