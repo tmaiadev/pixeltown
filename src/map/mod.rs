@@ -6,6 +6,8 @@ use std::collections::VecDeque;
 
 pub const MAP_SIZE: usize = 256;
 const BORDER_MARGIN: usize = 8;
+const EDGE_FALLOFF: f32 = 20.0;
+const EDGE_SINK: f32 = 0.4;
 const MAX_BEACH: u8 = 3;
 const SEA_RATIO: f32 = 0.2;
 const SEA_DEPTH_VARIATION: f32 = 16.0;
@@ -123,14 +125,23 @@ fn land_from_heights(heights: &[f32], ratio: f32) -> Vec<bool> {
     heights.iter().map(|&h| h >= threshold).collect()
 }
 
-fn height_field(height: impl Fn(usize, usize) -> f32) -> Vec<f32> {
+fn height_field(seed: u64, height: impl Fn(usize, usize) -> f32) -> Vec<f32> {
     let mut heights = vec![f32::NEG_INFINITY; MAP_SIZE * MAP_SIZE];
     for y in BORDER_MARGIN..MAP_SIZE - BORDER_MARGIN {
         for x in BORDER_MARGIN..MAP_SIZE - BORDER_MARGIN {
-            heights[idx(x, y)] = height(x, y);
+            heights[idx(x, y)] = height(x, y) - edge_falloff(x, y, seed);
         }
     }
     heights
+}
+
+// Sinks land near the border so coasts curve away instead of being cut by the margin.
+fn edge_falloff(x: usize, y: usize, seed: u64) -> f32 {
+    let edge = x.min(y).min(MAP_SIZE - 1 - x).min(MAP_SIZE - 1 - y) - BORDER_MARGIN;
+    let wobble = fbm(x as f32 * 0.02, y as f32 * 0.02, seed ^ 0xED6E, 2);
+    let width = EDGE_FALLOFF * (0.5 + wobble);
+    let t = 1.0 - (edge as f32 / width).min(1.0);
+    t * t * EDGE_SINK
 }
 
 fn inland(rng: &mut Rng, river: &mut [bool]) -> Vec<bool> {
@@ -142,7 +153,7 @@ fn inland(rng: &mut Rng, river: &mut [bool]) -> Vec<bool> {
 }
 
 fn island(seed: u64) -> Vec<bool> {
-    let heights = height_field(|x, y| {
+    let heights = height_field(seed, |x, y| {
         let noise = fbm(x as f32 * 0.025, y as f32 * 0.025, seed, 4);
         (1.0 - center_distance(x, y)) + (noise - 0.5) * 0.6
     });
@@ -150,7 +161,7 @@ fn island(seed: u64) -> Vec<bool> {
 }
 
 fn archipelago(seed: u64) -> Vec<bool> {
-    let heights = height_field(|x, y| {
+    let heights = height_field(seed, |x, y| {
         let noise = fbm(x as f32 * 0.03, y as f32 * 0.03, seed, 4);
         let mainland = (1.0 - center_distance(x, y) / 0.5).max(0.0).powf(1.2);
         noise * 0.7 + mainland * 0.3
@@ -314,8 +325,8 @@ mod tests {
     fn generation_output_is_stable_across_refactors() {
         let expected = [
             0x47b5_b26c_c0e3_4ea3,
-            0x9d92_e6d4_9302_290f,
-            0xe97d_eeda_b7f0_3693,
+            0x3e14_99eb_8a7b_45ed,
+            0xf506_3549_621e_81d3,
             0x8532_ebde_a11f_923c,
         ];
         for (kind, expected) in TerrainType::ALL.into_iter().zip(expected) {
