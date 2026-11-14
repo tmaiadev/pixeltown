@@ -31,9 +31,11 @@ enum Phase {
 pub struct TerrainScene {
     font: Font,
     sheet: Spritesheet,
+    nature: Spritesheet,
     water: FrameAnimation,
     map: Map,
     cells: Vec<autotile::Tile>,
+    features: Vec<Option<(u8, u8)>>,
     selected: TerrainType,
     camera: Camera,
     rng: Rng,
@@ -53,18 +55,25 @@ impl TerrainScene {
             include_bytes!("../../assets/sprites/terrain.png"),
             TILE_SIZE,
         );
+        let nature = Spritesheet::from_png(
+            include_bytes!("../../assets/sprites/nature.png"),
+            TILE_SIZE,
+        );
 
         let mut rng = Rng::new((date::now() * 1000.0) as u64);
         let selected = TerrainType::Inland;
         let map = Map::generate(selected, rng.next_u64());
         let cells = autotile::tile_cells(&map);
+        let features = autotile::feature_cells(&map);
 
         Self {
             font: load_font(),
             sheet,
+            nature,
             water: FrameAnimation::new(autotile::WATER_FRAMES, WATER_FPS),
             map,
             cells,
+            features,
             selected,
             camera: Camera::new(vec2(internal_width(), INTERNAL_HEIGHT)),
             rng,
@@ -82,6 +91,7 @@ impl TerrainScene {
     fn generate(&mut self) {
         self.map = Map::generate(self.selected, self.rng.next_u64());
         self.cells = autotile::tile_cells(&self.map);
+        self.features = autotile::feature_cells(&self.map);
     }
 
     fn activate(&mut self, button: usize) {
@@ -129,9 +139,13 @@ impl TerrainScene {
         let frame = self.water.frame();
         for y in y0..y1 {
             for x in x0..x1 {
-                let tile = self.cells[y * MAP_SIZE + x];
-                let (col, row) = autotile::animated_cell(tile, frame, x + y);
-                self.sheet.draw_tile(col, row, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
+                let i = y * MAP_SIZE + x;
+                let (px, py) = (x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
+                let (col, row) = autotile::animated_cell(self.cells[i], frame, x + y);
+                self.sheet.draw_tile(col, row, px, py);
+                if let Some((col, row)) = self.features[i] {
+                    self.nature.draw_tile(col as usize, row as usize, px, py);
+                }
             }
         }
 
