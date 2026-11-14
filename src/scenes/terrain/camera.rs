@@ -3,9 +3,9 @@ use macroquad::prelude::*;
 use crate::map::MAP_SIZE;
 
 pub const TILE_SIZE: f32 = 16.0;
-pub const MIN_ZOOM: f32 = 0.25;
 pub const MAX_ZOOM: f32 = 2.0;
-const ZOOM_STEP: f32 = 0.25;
+const ZOOM_LEVELS: [f32; 4] = [0.5, 1.0, 1.5, 2.0];
+const ZOOM_EPSILON: f32 = 1e-4;
 const ZOOM_SMOOTHING: f32 = 14.0;
 const PAN_SPEED: f32 = 240.0;
 const MAP_PIXELS: f32 = MAP_SIZE as f32 * TILE_SIZE;
@@ -38,11 +38,13 @@ impl Camera {
     }
 
     pub fn update(&mut self, dt: f32, viewport: Vec2, motion: Motion) {
+        let min_zoom = min_zoom(viewport);
         if motion.zoom_step != 0 {
-            self.target_zoom = step_zoom(self.target_zoom, motion.zoom_step);
+            self.target_zoom = step_zoom(self.target_zoom, motion.zoom_step, min_zoom);
         }
+        self.target_zoom = self.target_zoom.clamp(min_zoom, MAX_ZOOM);
         if motion.zoom_delta != 0.0 {
-            self.zoom = (self.zoom * motion.zoom_delta.exp()).clamp(MIN_ZOOM, MAX_ZOOM);
+            self.zoom = (self.zoom * motion.zoom_delta.exp()).clamp(min_zoom, MAX_ZOOM);
             self.target_zoom = self.zoom;
         } else {
             let blend = 1.0 - (-ZOOM_SMOOTHING * dt).exp();
@@ -71,9 +73,17 @@ impl Camera {
     }
 }
 
-fn step_zoom(zoom: f32, direction: i32) -> f32 {
-    let steps = (zoom / ZOOM_STEP).round() as i32 + direction.signum();
-    (steps as f32 * ZOOM_STEP).clamp(MIN_ZOOM, MAX_ZOOM)
+fn min_zoom(viewport: Vec2) -> f32 {
+    viewport.max_element() / MAP_PIXELS
+}
+
+fn step_zoom(zoom: f32, direction: i32, min_zoom: f32) -> f32 {
+    let levels = std::iter::once(min_zoom).chain(ZOOM_LEVELS.into_iter().filter(|level| *level > min_zoom));
+    if direction > 0 {
+        levels.filter(|level| *level > zoom + ZOOM_EPSILON).fold(MAX_ZOOM, f32::min)
+    } else {
+        levels.filter(|level| *level < zoom - ZOOM_EPSILON).fold(min_zoom, f32::max)
+    }
 }
 
 fn clamp_axis(center: f32, view: f32) -> f32 {
@@ -126,12 +136,22 @@ mod tests {
     }
 
     #[test]
-    fn zoom_steps_snap_to_quarters_and_respect_limits() {
-        assert_eq!(step_zoom(1.0, 1), 1.25);
-        assert_eq!(step_zoom(1.0, -1), 0.75);
-        assert_eq!(step_zoom(MAX_ZOOM, 1), MAX_ZOOM);
-        assert_eq!(step_zoom(MIN_ZOOM, -1), MIN_ZOOM);
-        assert_eq!(step_zoom(1.1, 1), 1.25);
+    fn zoom_steps_follow_fixed_levels_and_respect_limits() {
+        let min = min_zoom(VIEWPORT);
+        assert_eq!(step_zoom(1.0, 1, min), 1.5);
+        assert_eq!(step_zoom(1.0, -1, min), 0.5);
+        assert_eq!(step_zoom(0.5, -1, min), min);
+        assert_eq!(step_zoom(min, 1, min), 0.5);
+        assert_eq!(step_zoom(MAX_ZOOM, 1, min), MAX_ZOOM);
+        assert_eq!(step_zoom(min, -1, min), min);
+        assert_eq!(step_zoom(1.1, 1, min), 1.5);
+        assert_eq!(step_zoom(1.1, -1, min), 1.0);
+    }
+
+    #[test]
+    fn min_zoom_fits_the_larger_viewport_side_to_the_map() {
+        assert_eq!(min_zoom(VIEWPORT) * MAP_PIXELS, VIEWPORT.x);
+        assert_eq!(min_zoom(vec2(300.0, 900.0)) * MAP_PIXELS, 900.0);
     }
 
     #[test]
@@ -140,18 +160,18 @@ mod tests {
         moved(&mut camera, Motion { zoom_delta: 10.0, ..Default::default() });
         assert_eq!(camera.zoom(), MAX_ZOOM);
         moved(&mut camera, Motion { zoom_delta: -20.0, ..Default::default() });
-        assert_eq!(camera.zoom(), MIN_ZOOM);
+        assert_eq!(camera.zoom(), min_zoom(VIEWPORT));
     }
 
     #[test]
     fn step_zoom_animates_towards_the_target() {
         let mut camera = Camera::new();
         camera.update(0.016, VIEWPORT, Motion { zoom_step: 1, ..Default::default() });
-        assert!(camera.zoom() > 1.0 && camera.zoom() < 1.25);
+        assert!(camera.zoom() > 1.0 && camera.zoom() < 1.5);
         for _ in 0..120 {
             camera.update(0.016, VIEWPORT, Motion::default());
         }
-        assert!((camera.zoom() - 1.25).abs() < 0.001);
+        assert!((camera.zoom() - 1.5).abs() < 0.001);
     }
 
     #[test]
@@ -173,8 +193,7 @@ mod tests {
         let mut far = Camera::new();
         far.update(0.0, VIEWPORT, Motion { zoom_delta: -10.0, ..Default::default() });
         let (x0, y0, x1, y1) = far.visible_tiles(VIEWPORT);
-        assert!((x1 - x0).abs_diff(214) <= 2);
-        assert!((y1 - y0).abs_diff(120) <= 2);
-        assert!(x1 <= MAP_SIZE && y1 <= MAP_SIZE);
+        assert_eq!((x0, x1), (0, MAP_SIZE));
+        assert!(y1 - y0 < MAP_SIZE);
     }
 }
