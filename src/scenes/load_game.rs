@@ -12,7 +12,7 @@ use crate::ui::text::{draw_text_centered, draw_text_left, draw_text_right, trunc
 use crate::utils::animation::Animation;
 use crate::utils::assets::{load_font, load_icons};
 use crate::utils::spritesheet::Spritesheet;
-use crate::{internal_width, INTERNAL_HEIGHT};
+use crate::screen::{self, internal_width, INTERNAL_HEIGHT};
 use layout::{Button, Dialog, DialogButton, Layout, ROW_HEIGHT};
 
 const FADE_IN: f32 = 0.4;
@@ -361,10 +361,10 @@ impl Scene for LoadGameScene {
             };
         }
         if self.fade_in.has_ended() {
-            let (w, h) = (internal_width(), INTERNAL_HEIGHT);
+            let viewport = screen::viewport();
             match self.confirm {
-                Some(focus) => self.handle_dialog_input(input, &layout::dialog(w, h), focus),
-                None => self.handle_input(input, &layout::layout(w, h)),
+                Some(focus) => self.handle_dialog_input(input, &layout::dialog(viewport.x, viewport.y), focus),
+                None => self.handle_input(input, &layout::layout(viewport.x, viewport.y)),
             }
         }
         None
@@ -372,7 +372,8 @@ impl Scene for LoadGameScene {
 
     fn draw(&self) {
         clear_background(BLACK);
-        let layout = layout::layout(internal_width(), INTERNAL_HEIGHT);
+        let viewport = screen::viewport();
+        let layout = layout::layout(viewport.x, viewport.y);
         let alpha = self.fade_in.progress() * (1.0 - self.fade_out.progress());
 
         draw_panel(layout.panel, alpha);
@@ -382,7 +383,7 @@ impl Scene for LoadGameScene {
         self.draw_scrollbar(&layout, alpha);
         self.draw_buttons(&layout, alpha);
         if let Some(focus) = self.confirm {
-            self.draw_dialog(&layout::dialog(internal_width(), INTERNAL_HEIGHT), focus, alpha);
+            self.draw_dialog(&layout::dialog(viewport.x, viewport.y), focus, alpha);
         }
     }
 }

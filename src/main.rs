@@ -3,6 +3,7 @@ mod input;
 mod map;
 mod map_view;
 mod scenes;
+mod screen;
 mod ui;
 mod utils;
 
@@ -10,8 +11,7 @@ use macroquad::prelude::*;
 use input::Input;
 use cli::{Args, SceneName};
 use scenes::Scene;
-
-pub const INTERNAL_HEIGHT: f32 = 480.0;
+use screen::set_internal_camera;
 
 fn window_conf() -> Conf {
     Conf {
@@ -21,19 +21,6 @@ fn window_conf() -> Conf {
         high_dpi: true,
         ..Default::default()
     }
-}
-
-pub fn internal_width() -> f32 {
-    INTERNAL_HEIGHT * screen_width() / screen_height()
-}
-
-pub fn set_internal_camera() {
-    let width = internal_width();
-    set_camera(&Camera2D {
-        zoom: vec2(2.0 / width, 2.0 / INTERNAL_HEIGHT),
-        target: vec2(width / 2.0, INTERNAL_HEIGHT / 2.0),
-        ..Default::default()
-    });
 }
 
 #[macroquad::main(window_conf)]

@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::internal_width;
+use crate::screen::internal_width;
 
 const SIZE: u16 = 8;
 const MARGIN: f32 = 4.0;

@@ -6,7 +6,7 @@ use crate::ui::image::draw_texture_scaled;
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::utils::assets::{load_font, load_logo};
-use crate::{internal_width, INTERNAL_HEIGHT};
+use crate::screen::{internal_width, INTERNAL_HEIGHT};
 
 const LOGO_SCALE: f32 = 2.0;
 

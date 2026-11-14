@@ -2,7 +2,7 @@ use macroquad::prelude::*;
 
 use super::camera::{TileRect, TILE_SIZE};
 use crate::map::MAP_SIZE;
-use crate::set_internal_camera;
+use crate::screen::set_internal_camera;
 use crate::utils::perspective::Perspective;
 
 const CHUNK_TILES: usize = 32;

@@ -4,7 +4,7 @@ mod touch;
 
 use macroquad::prelude::*;
 
-use crate::INTERNAL_HEIGHT;
+use crate::screen::to_internal;
 use gamepad::Gamepads;
 pub use gamepad::GamepadKind;
 use touch::Gestures;
@@ -243,10 +243,6 @@ impl Input {
     pub fn grid_toggled(&self) -> bool {
         self.frame.grid_toggled
     }
-}
-
-fn to_internal(screen: Vec2) -> Vec2 {
-    screen * (INTERNAL_HEIGHT / screen_height())
 }
 
 fn internal_mouse_position() -> Vec2 {

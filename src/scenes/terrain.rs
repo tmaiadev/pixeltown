@@ -2,7 +2,6 @@ mod dock;
 
 use std::path::PathBuf;
 
-use macroquad::miniquad::date;
 use macroquad::prelude::*;
 
 use super::{gameplay::GameplayScene, Scene};
@@ -14,7 +13,8 @@ use crate::ui::panel::{with_alpha, ERROR};
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
 use crate::utils::assets::load_font;
-use crate::{internal_width, set_internal_camera, INTERNAL_HEIGHT};
+use crate::screen::{self, set_internal_camera};
+use crate::utils::seed::time_seed;
 use dock::{DockButton, DockView};
 
 const FADE_IN: f32 = 1.0;
@@ -52,10 +52,10 @@ pub struct TerrainScene {
 
 impl TerrainScene {
     pub fn new() -> Self {
-        let mut rng = Rng::new((date::now() * 1000.0) as u64);
+        let mut rng = Rng::new(time_seed());
         let selected = TerrainType::Inland;
         let map = Map::generate(selected, rng.next_u64());
-        let viewport = vec2(internal_width(), INTERNAL_HEIGHT);
+        let viewport = screen::viewport();
         let camera = Camera::new(viewport);
 
         Self {
@@ -171,7 +171,7 @@ impl TerrainScene {
 impl Scene for TerrainScene {
     fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
         let dt = get_frame_time();
-        let viewport = vec2(internal_width(), INTERNAL_HEIGHT);
+        let viewport = screen::viewport();
         self.device = input.last_device();
         self.pointer = input.pointer();
 
@@ -220,7 +220,7 @@ impl Scene for TerrainScene {
 
     fn draw(&self) {
         clear_background(BLACK);
-        let viewport = vec2(internal_width(), INTERNAL_HEIGHT);
+        let viewport = screen::viewport();
         self.view.draw(&self.camera, viewport, self.grid_visible);
 
         set_internal_camera();

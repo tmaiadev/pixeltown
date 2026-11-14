@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use super::to_internal;
+use crate::screen::to_internal;
 
 pub fn tap_position() -> Option<Vec2> {
     touches()
