@@ -37,17 +37,26 @@ enum Next {
     Gameplay(Box<GameplayScene>),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Browsing,
+    Deleting,
+    Confirming(DialogButton),
+}
+
 struct Row {
+    entry: SaveEntry,
     name: String,
     modified: String,
 }
 
 impl Row {
-    fn new(entry: &SaveEntry) -> Self {
+    fn new(entry: SaveEntry) -> Self {
         let modified: DateTime<Local> = entry.modified.into();
         Self {
             name: entry.name().to_owned(),
             modified: modified.format("%Y-%m-%d %H:%M").to_string(),
+            entry,
         }
     }
 }
@@ -55,14 +64,12 @@ impl Row {
 pub struct LoadGameScene {
     font: Font,
     icons: Spritesheet,
-    saves: Vec<SaveEntry>,
     rows: Vec<Row>,
     selected: usize,
     scroll: f32,
     focus: Button,
     focus_visible: bool,
-    deleting: bool,
-    confirm: Option<DialogButton>,
+    mode: Mode,
     error: Option<&'static str>,
     fade_in: Animation,
     fade_out: Animation,
@@ -71,23 +78,32 @@ pub struct LoadGameScene {
 
 impl LoadGameScene {
     pub fn new() -> Self {
-        let saves = save::list();
         Self {
             font: load_font(),
             icons: load_icons(),
-            rows: saves.iter().map(Row::new).collect(),
-            saves,
+            rows: save::list().into_iter().map(Row::new).collect(),
             selected: 0,
             scroll: 0.0,
             focus: Button::Load,
             focus_visible: false,
-            deleting: false,
-            confirm: None,
+            mode: Mode::Browsing,
             error: None,
             fade_in: Animation::new(FADE_IN).autostart(),
             fade_out: Animation::new(FADE_OUT),
             next: None,
         }
+    }
+
+    fn deleting(&self) -> bool {
+        self.mode != Mode::Browsing
+    }
+
+    fn confirming(&self) -> bool {
+        matches!(self.mode, Mode::Confirming(_))
+    }
+
+    fn selected_entry(&self) -> Option<&SaveEntry> {
+        self.rows.get(self.selected).map(|row| &row.entry)
     }
 
     fn leave(&mut self, next: Next) {
@@ -98,17 +114,21 @@ impl LoadGameScene {
     fn activate(&mut self, button: Button) {
         match button {
             Button::Trash => {
-                self.deleting = !self.deleting && !self.rows.is_empty();
+                self.mode = if self.deleting() || self.rows.is_empty() {
+                    Mode::Browsing
+                } else {
+                    Mode::Deleting
+                };
                 self.error = None;
             }
             Button::Cancel => self.leave(Next::Menu),
-            Button::Load if self.deleting => {
-                if self.selected < self.saves.len() {
-                    self.confirm = Some(DialogButton::Cancel);
+            Button::Load if self.deleting() => {
+                if self.selected_entry().is_some() {
+                    self.mode = Mode::Confirming(DialogButton::Cancel);
                 }
             }
             Button::Load => {
-                let Some(entry) = self.saves.get(self.selected) else {
+                let Some(entry) = self.selected_entry() else {
                     return;
                 };
                 match GameplayScene::load(&entry.path) {
@@ -123,14 +143,14 @@ impl LoadGameScene {
     }
 
     fn activate_dialog(&mut self, button: DialogButton) {
-        self.confirm = None;
+        self.mode = Mode::Deleting;
         if button == DialogButton::Delete {
             self.delete_selected();
         }
     }
 
     fn delete_selected(&mut self) {
-        let Some(entry) = self.saves.get(self.selected) else {
+        let Some(entry) = self.selected_entry() else {
             return;
         };
         if let Err(err) = save::delete(&entry.path) {
@@ -138,11 +158,10 @@ impl LoadGameScene {
             self.error = Some("Could not delete this save");
             return;
         }
-        self.saves.remove(self.selected);
         self.rows.remove(self.selected);
         self.selected = self.selected.min(self.rows.len().saturating_sub(1));
         if self.rows.is_empty() {
-            self.deleting = false;
+            self.mode = Mode::Browsing;
         }
     }
 
@@ -166,7 +185,7 @@ impl LoadGameScene {
     fn handle_dialog_input(&mut self, input: &Input, dialog: &Dialog, mut focus: DialogButton) {
         if input.pressed_nav(Action::Left) || input.pressed_nav(Action::Right) {
             focus = focus.toggle();
-            self.confirm = Some(focus);
+            self.mode = Mode::Confirming(focus);
             self.focus_visible = true;
         }
         if input.pointer_moved() || input.last_device() == Device::Touch {
@@ -209,7 +228,7 @@ impl LoadGameScene {
         let scrolled = input.scroll() - input.drag().y / ROW_HEIGHT;
         self.scroll = (self.scroll + scrolled).clamp(0.0, layout::max_scroll(len, visible));
 
-        if input.pressed(Action::Cancel) && self.deleting {
+        if input.pressed(Action::Cancel) && self.deleting() {
             self.activate(Button::Trash);
         } else if input.pressed(Action::Cancel) {
             self.activate(Button::Cancel);
@@ -232,9 +251,10 @@ impl LoadGameScene {
             return;
         }
 
-        let hovered = match self.confirm {
-            None if self.shows_hover(input) => self.hovered_row(layout, input.pointer()),
-            _ => None,
+        let hovered = if self.confirming() || !self.shows_hover(input) {
+            None
+        } else {
+            self.hovered_row(layout, input.pointer())
         };
         let rows = self.rows.iter().enumerate().skip(self.first_row());
         for (slot, (i, row)) in rows.take(layout.visible_rows()).enumerate() {
@@ -274,15 +294,16 @@ impl LoadGameScene {
     }
 
     fn draw_buttons(&self, input: &Input, layout: &Layout, alpha: f32) {
-        let hovered = match self.confirm {
-            None if self.shows_hover(input) => input.pointer().and_then(|p| layout.button_at(p)),
-            _ => None,
+        let hovered = if self.confirming() || !self.shows_hover(input) {
+            None
+        } else {
+            input.pointer().and_then(|p| layout.button_at(p))
         };
-        let focused = |button| self.confirm.is_none() && self.focus_visible && self.focus == button;
+        let focused = |button| !self.confirming() && self.focus_visible && self.focus == button;
         let enabled_alpha = if self.rows.is_empty() { alpha * DISABLED_ALPHA } else { alpha };
 
         let trash = layout.trash;
-        let (pressed, focus) = (self.deleting, focused(Button::Trash));
+        let (pressed, focus) = (self.deleting(), focused(Button::Trash));
         let trash_hovered = hovered == Some(Button::Trash);
         draw_toggle(trash, pressed, trash_hovered, DELETE_FILL, focus, enabled_alpha);
         let sink = if pressed { 1.0 } else { 0.0 };
@@ -294,7 +315,7 @@ impl LoadGameScene {
         for button in [Button::Cancel, Button::Load] {
             let (label, fill, alpha) = match button {
                 Button::Cancel => ("Cancel", None, alpha),
-                Button::Load if self.deleting => ("Delete", Some(DELETE_FILL), enabled_alpha),
+                Button::Load if self.deleting() => ("Delete", Some(DELETE_FILL), enabled_alpha),
                 _ => ("Load", Some(LOAD_FILL), enabled_alpha),
             };
             let rect = layout.button(button);
@@ -356,9 +377,11 @@ impl Scene for LoadGameScene {
         }
         if self.fade_in.has_ended() {
             let viewport = screen::viewport();
-            match self.confirm {
-                Some(focus) => self.handle_dialog_input(input, &layout::dialog(viewport.x, viewport.y), focus),
-                None => self.handle_input(input, &layout::layout(viewport.x, viewport.y)),
+            match self.mode {
+                Mode::Confirming(focus) => {
+                    self.handle_dialog_input(input, &layout::dialog(viewport.x, viewport.y), focus)
+                }
+                _ => self.handle_input(input, &layout::layout(viewport.x, viewport.y)),
             }
         }
         None
@@ -376,7 +399,7 @@ impl Scene for LoadGameScene {
         self.draw_rows(input, &layout, alpha);
         self.draw_scrollbar(&layout, alpha);
         self.draw_buttons(input, &layout, alpha);
-        if let Some(focus) = self.confirm {
+        if let Mode::Confirming(focus) = self.mode {
             self.draw_dialog(input, &layout::dialog(viewport.x, viewport.y), focus, alpha);
         }
     }
