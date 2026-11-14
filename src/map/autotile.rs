@@ -101,11 +101,44 @@ fn variant(x: usize, y: usize, count: usize) -> usize {
     ((h >> 8) as usize) % count
 }
 
-fn cell(index: usize) -> (usize, usize) {
-    (index % SHEET_COLUMNS, index / SHEET_COLUMNS)
+// Column and row of a sprite in a spritesheet.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SpriteCell {
+    col: u8,
+    row: u8,
 }
 
-pub fn tile_cell(map: &Map, x: usize, y: usize) -> (usize, usize) {
+impl SpriteCell {
+    pub const fn new(col: usize, row: usize) -> Self {
+        Self {
+            col: col as u8,
+            row: row as u8,
+        }
+    }
+
+    pub fn col(self) -> usize {
+        self.col as usize
+    }
+
+    pub fn row(self) -> usize {
+        self.row as usize
+    }
+}
+
+fn cell(index: usize) -> SpriteCell {
+    SpriteCell::new(index % SHEET_COLUMNS, index / SHEET_COLUMNS)
+}
+
+// Every map position in row-major order.
+fn tiles() -> impl Iterator<Item = (usize, usize)> {
+    (0..MAP_SIZE).flat_map(|y| (0..MAP_SIZE).map(move |x| (x, y)))
+}
+
+fn per_tile<T>(f: impl Fn(usize, usize) -> T) -> Vec<T> {
+    tiles().map(|(x, y)| f(x, y)).collect()
+}
+
+pub fn tile_cell(map: &Map, x: usize, y: usize) -> SpriteCell {
     match map.get(x, y) {
         Terrain::Water => cell(WATER_START + variant(x, y, WATER_VARIANTS)),
         Terrain::Sand => match neighbor_mask(map, x, y, Terrain::Water) {
@@ -119,7 +152,7 @@ pub fn tile_cell(map: &Map, x: usize, y: usize) -> (usize, usize) {
     }
 }
 
-pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
+pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
     let index = match map.feature(x, y)? {
         Feature::Rock => ROCK_START + variant(x, y, FEATURE_VARIANTS),
         // Trees and forests are drawn in perspective, not baked with the ground.
@@ -128,7 +161,7 @@ pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
     Some(cell(index))
 }
 
-pub fn forest_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
+pub fn forest_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
     if map.feature(x, y) != Some(Feature::Forest) {
         return None;
     }
@@ -138,87 +171,61 @@ pub fn forest_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
     Some(cell(FOREST_START + blob * FOREST_PERIOD * FOREST_PERIOD + position))
 }
 
-pub fn forest_cells(map: &Map) -> Vec<Option<(u8, u8)>> {
-    let mut cells = Vec::with_capacity(MAP_SIZE * MAP_SIZE);
-    for y in 0..MAP_SIZE {
-        for x in 0..MAP_SIZE {
-            cells.push(forest_cell(map, x, y).map(|(col, row)| (col as u8, row as u8)));
-        }
-    }
-    cells
+pub fn forest_cells(map: &Map) -> Vec<Option<SpriteCell>> {
+    per_tile(|x, y| forest_cell(map, x, y))
 }
 
 // Only edge trunks can peek out from under the canopy, so inner tiles get none.
 pub fn forest_trunks(map: &Map) -> Vec<(u16, u16)> {
-    let mut trunks = Vec::new();
-    for y in 0..MAP_SIZE {
-        for x in 0..MAP_SIZE {
-            if map.feature(x, y) == Some(Feature::Forest) && forest_edge_mask(map, x, y) != 0 {
-                trunks.push((x as u16, y as u16));
-            }
-        }
-    }
-    trunks
+    tiles()
+        .filter(|&(x, y)| map.feature(x, y) == Some(Feature::Forest) && forest_edge_mask(map, x, y) != 0)
+        .map(|(x, y)| (x as u16, y as u16))
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TreeCell {
     pub x: u16,
     pub y: u16,
-    pub crown: (u8, u8),
+    pub crown: SpriteCell,
 }
 
-pub fn tree_trunk() -> (usize, usize) {
+pub fn tree_trunk() -> SpriteCell {
     cell(TREE_TRUNK)
 }
 
-pub fn tree_shadow() -> (usize, usize) {
+pub fn tree_shadow() -> SpriteCell {
     cell(TREE_SHADOW)
 }
 
 // Row-major, so drawing in order paints lower trees over upper ones.
 pub fn tree_cells(map: &Map) -> Vec<TreeCell> {
-    let mut trees = Vec::new();
-    for y in 0..MAP_SIZE {
-        for x in 0..MAP_SIZE {
-            if map.feature(x, y) == Some(Feature::Tree) {
-                let (col, row) = cell(TREE_START + variant(x, y, FEATURE_VARIANTS));
-                trees.push(TreeCell {
-                    x: x as u16,
-                    y: y as u16,
-                    crown: (col as u8, row as u8),
-                });
-            }
-        }
-    }
-    trees
+    tiles()
+        .filter(|&(x, y)| map.feature(x, y) == Some(Feature::Tree))
+        .map(|(x, y)| TreeCell {
+            x: x as u16,
+            y: y as u16,
+            crown: cell(TREE_START + variant(x, y, FEATURE_VARIANTS)),
+        })
+        .collect()
 }
 
-pub fn feature_cells(map: &Map) -> Vec<Option<(u8, u8)>> {
-    let mut cells = Vec::with_capacity(MAP_SIZE * MAP_SIZE);
-    for y in 0..MAP_SIZE {
-        for x in 0..MAP_SIZE {
-            cells.push(feature_cell(map, x, y).map(|(col, row)| (col as u8, row as u8)));
-        }
-    }
-    cells
+pub fn feature_cells(map: &Map) -> Vec<Option<SpriteCell>> {
+    per_tile(|x, y| feature_cell(map, x, y))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Tile {
-    cell: (u8, u8),
+pub struct GroundSprite {
+    cell: SpriteCell,
     animated: bool,
 }
 
-impl Tile {
-    fn new((col, row): (usize, usize), animated: bool) -> Self {
-        Self {
-            cell: (col as u8, row as u8),
-            animated,
-        }
+impl GroundSprite {
+    fn new(cell: SpriteCell, animated: bool) -> Self {
+        Self { cell, animated }
     }
 
-    pub fn is_animated(&self) -> bool {
+    pub fn is_animated(self) -> bool {
         self.animated
     }
 }
@@ -240,11 +247,11 @@ fn is_animated(map: &Map, x: usize, y: usize) -> bool {
 }
 
 // `phase` desyncs open water between tiles; shores always follow the global frame.
-pub fn animated_cell(tile: Tile, frame: usize, phase: usize) -> (usize, usize) {
-    let (col, row) = (tile.cell.0 as usize, tile.cell.1 as usize);
+pub fn animated_cell(sprite: GroundSprite, frame: usize, phase: usize) -> SpriteCell {
+    let (col, row) = (sprite.cell.col(), sprite.cell.row());
     let open_water = row == 0 && (WATER_START..WATER_START + WATER_VARIANTS).contains(&col);
     let shore = (1..FRAME_ROWS).contains(&row);
-    let frame = match (tile.animated, open_water, shore) {
+    let frame = match (sprite.animated, open_water, shore) {
         (true, true, _) => (frame + phase) % WATER_FRAMES,
         (true, _, true) => frame % WATER_FRAMES,
         _ => 0,
@@ -253,17 +260,11 @@ pub fn animated_cell(tile: Tile, frame: usize, phase: usize) -> (usize, usize) {
         0 => row,
         f => FRAMES_START_ROW + (f - 1) * FRAME_ROWS + row,
     };
-    (col, row)
+    SpriteCell::new(col, row)
 }
 
-pub fn tile_cells(map: &Map) -> Vec<Tile> {
-    let mut tiles = Vec::with_capacity(MAP_SIZE * MAP_SIZE);
-    for y in 0..MAP_SIZE {
-        for x in 0..MAP_SIZE {
-            tiles.push(Tile::new(tile_cell(map, x, y), is_animated(map, x, y)));
-        }
-    }
-    tiles
+pub fn ground_sprites(map: &Map) -> Vec<GroundSprite> {
+    per_tile(|x, y| GroundSprite::new(tile_cell(map, x, y), is_animated(map, x, y)))
 }
 
 #[cfg(test)]
@@ -300,9 +301,9 @@ mod tests {
         assert_eq!(feature_cell(&map, 0, 0), None);
         for x in 0..3 {
             map.features[idx(x, 0)] = Some(Feature::Rock);
-            let (col, row) = feature_cell(&map, x, 0).unwrap();
-            assert_eq!(row, 0);
-            assert!((ROCK_START..ROCK_START + FEATURE_VARIANTS).contains(&col));
+            let cell = feature_cell(&map, x, 0).unwrap();
+            assert_eq!(cell.row(), 0);
+            assert!((ROCK_START..ROCK_START + FEATURE_VARIANTS).contains(&cell.col()));
         }
     }
 
@@ -328,14 +329,17 @@ mod tests {
         let positions: Vec<_> = trees.iter().map(|t| (t.x, t.y)).collect();
         assert_eq!(positions, [(2, 0), (0, 1), (1, 1)]);
         for tree in trees {
-            assert_eq!(tree.crown.1, 0);
-            assert!((TREE_START..TREE_START + FEATURE_VARIANTS).contains(&(tree.crown.0 as usize)));
+            assert_eq!(tree.crown.row(), 0);
+            assert!((TREE_START..TREE_START + FEATURE_VARIANTS).contains(&tree.crown.col()));
         }
     }
 
+    fn index(cell: SpriteCell) -> usize {
+        cell.row() * SHEET_COLUMNS + cell.col()
+    }
+
     fn forest_index(map: &Map, x: usize, y: usize) -> usize {
-        let (col, row) = forest_cell(map, x, y).unwrap();
-        row * SHEET_COLUMNS + col - FOREST_START
+        index(forest_cell(map, x, y).unwrap()) - FOREST_START
     }
 
     #[test]
@@ -392,16 +396,15 @@ mod tests {
     #[test]
     fn tiles_without_lower_neighbors_use_base_variants() {
         let flat = map_from(&["...", "...", "..."]);
-        let (col, row) = tile_cell(&flat, 1, 1);
-        assert_eq!(row, 0);
-        assert!((SAND_START..WATER_START).contains(&col));
+        let cell = tile_cell(&flat, 1, 1);
+        assert_eq!(cell.row(), 0);
+        assert!((SAND_START..WATER_START).contains(&cell.col()));
     }
 
     #[test]
     fn sand_next_to_water_uses_shore_section() {
         let map = map_from(&["~~~", "~..", "~.."]);
-        let (col, row) = tile_cell(&map, 1, 1);
-        let index = row * SHEET_COLUMNS + col;
+        let index = index(tile_cell(&map, 1, 1));
         assert!((SHORE_START..GRASS_EDGE_START).contains(&index));
         assert_eq!(index - SHORE_START, BLOB_INDEX[(N | W) as usize] as usize);
     }
@@ -409,36 +412,33 @@ mod tests {
     #[test]
     fn grass_next_to_sand_uses_grass_edge_section() {
         let map = map_from(&[".##", ".##", ".##"]);
-        let (col, row) = tile_cell(&map, 1, 1);
-        let index = row * SHEET_COLUMNS + col;
+        let index = index(tile_cell(&map, 1, 1));
         assert_eq!(index - GRASS_EDGE_START, BLOB_INDEX[W as usize] as usize);
     }
 
     #[test]
     fn water_always_uses_water_variants() {
         let map = map_from(&["~~~", "~~~", "~~~"]);
-        let (col, row) = tile_cell(&map, 1, 1);
-        assert_eq!(row, 0);
-        assert!((WATER_START..WATER_START + WATER_VARIANTS).contains(&col));
+        let cell = tile_cell(&map, 1, 1);
+        assert_eq!(cell.row(), 0);
+        assert!((WATER_START..WATER_START + WATER_VARIANTS).contains(&cell.col()));
     }
 
-    fn tile(cell: (usize, usize)) -> Tile {
-        Tile::new(cell, true)
+    fn sprite(col: usize, row: usize) -> GroundSprite {
+        GroundSprite::new(SpriteCell::new(col, row), true)
     }
 
     #[test]
     fn frame_zero_keeps_the_original_cell() {
-        let water = (WATER_START, 0);
-        let shore = (3, 2);
-        assert_eq!(animated_cell(tile(water), 0, 0), water);
-        assert_eq!(animated_cell(tile(shore), 0, 0), shore);
+        assert_eq!(animated_cell(sprite(WATER_START, 0), 0, 0), SpriteCell::new(WATER_START, 0));
+        assert_eq!(animated_cell(sprite(3, 2), 0, 0), SpriteCell::new(3, 2));
     }
 
     #[test]
     fn static_cells_never_animate() {
-        for cell in [(0, 0), (SAND_START, 0), (2, 4), (5, 6)] {
+        for (col, row) in [(0, 0), (SAND_START, 0), (2, 4), (5, 6)] {
             for frame in 0..WATER_FRAMES {
-                assert_eq!(animated_cell(tile(cell), frame, 3), cell);
+                assert_eq!(animated_cell(sprite(col, row), frame, 3), SpriteCell::new(col, row));
             }
         }
     }
@@ -450,8 +450,8 @@ mod tests {
             for phase in 0..WATER_FRAMES {
                 for col in 0..SHEET_COLUMNS {
                     for row in 0..4 {
-                        let (_, r) = animated_cell(tile((col, row)), frame, phase);
-                        assert!(r < sheet_rows);
+                        let cell = animated_cell(sprite(col, row), frame, phase);
+                        assert!(cell.row() < sheet_rows);
                     }
                 }
             }
@@ -460,16 +460,16 @@ mod tests {
 
     #[test]
     fn phase_offsets_open_water_but_not_shores() {
-        let water = tile((WATER_START, 0));
-        let shore = tile((3, 2));
+        let water = sprite(WATER_START, 0);
+        let shore = sprite(3, 2);
         assert_ne!(animated_cell(water, 0, 1), animated_cell(water, 0, 0));
         assert_eq!(animated_cell(shore, 1, 0), animated_cell(shore, 1, 2));
     }
 
     #[test]
     fn tiles_flagged_static_ignore_the_frame() {
-        let shore = Tile::new((3, 2), false);
-        assert_eq!(animated_cell(shore, 2, 1), (3, 2));
+        let shore = GroundSprite::new(SpriteCell::new(3, 2), false);
+        assert_eq!(animated_cell(shore, 2, 1), SpriteCell::new(3, 2));
     }
 
     #[test]
@@ -490,8 +490,7 @@ mod tests {
     #[test]
     fn diagonal_only_neighbor_picks_corner_piece() {
         let map = map_from(&["~..", "...", "..."]);
-        let (col, row) = tile_cell(&map, 1, 1);
-        let index = row * SHEET_COLUMNS + col;
+        let index = index(tile_cell(&map, 1, 1));
         assert_eq!(index - SHORE_START, BLOB_INDEX[NW as usize] as usize);
     }
 }

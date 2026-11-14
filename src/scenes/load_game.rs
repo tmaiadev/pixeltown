@@ -5,6 +5,7 @@ use macroquad::prelude::*;
 
 use super::{gameplay::GameplayScene, menu::MenuScene, Scene};
 use crate::input::{Action, Device, Input};
+use crate::map::autotile::SpriteCell;
 use crate::map::save::{self, SaveEntry};
 use crate::ui::panel::{draw_button, draw_panel, draw_toggle, rgb, with_alpha, ButtonState, ERROR, TEXT};
 use crate::ui::text::{draw_text_centered, draw_text_left, draw_text_right, truncate, wrap};
@@ -22,7 +23,7 @@ const ROW_PAD: f32 = 8.0;
 const COLUMN_GAP: f32 = 16.0;
 const DISABLED_ALPHA: f32 = 0.4;
 const LINE_HEIGHT: f32 = 12.0;
-const TRASH_ICON: (usize, usize) = (0, 0);
+const TRASH_ICON: SpriteCell = SpriteCell::new(0, 0);
 const CONFIRM_MESSAGE: &str = "Are you sure you want to delete this save?";
 
 const LOAD_FILL: Color = rgb(62, 148, 76);
@@ -292,7 +293,7 @@ impl LoadGameScene {
         let icon_size = Vec2::splat(self.icons.tile_size());
         let icon = (trash.center() - icon_size / 2.0 + sink).round();
         let tint = with_alpha(WHITE, enabled_alpha);
-        self.icons.draw_tile_tinted(TRASH_ICON.0, TRASH_ICON.1, icon.x, icon.y, tint);
+        self.icons.draw_tile_tinted(TRASH_ICON, icon.x, icon.y, tint);
 
         for button in [Button::Cancel, Button::Load] {
             let (label, fill, alpha) = match button {

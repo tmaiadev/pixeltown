@@ -11,11 +11,11 @@ const TRUNK_WIDTH: f32 = 2.0;
 const MARGIN: usize = 1;
 
 pub fn draw_shadows(nature: &Spritesheet, trees: &[TreeCell], visible: TileRect) {
-    let (col, row) = autotile::tree_shadow();
+    let shadow = autotile::tree_shadow();
     let half = nature.tile_size() / 2.0;
     for tree in shown(trees, |t| (t.x, t.y), visible) {
         let ground = ground(tree.x, tree.y);
-        nature.draw_tile(col, row, ground.x - half, ground.y - half);
+        nature.draw_tile(shadow, ground.x - half, ground.y - half);
     }
 }
 
@@ -29,14 +29,12 @@ pub fn draw_trees(nature: &Spritesheet, trees: &[TreeCell], visible: TileRect, p
     let half = nature.tile_size() / 2.0;
     for tree in shown(trees, |t| (t.x, t.y), visible) {
         let top = draw_trunk(nature, ground(tree.x, tree.y), perspective);
-        let (col, row) = tree.crown;
-        nature.draw_tile(col as usize, row as usize, top.x - half, top.y - half);
+        nature.draw_tile(tree.crown, top.x - half, top.y - half);
     }
 }
 
 fn draw_trunk(nature: &Spritesheet, ground: Vec2, perspective: &Perspective) -> Vec2 {
-    let (col, row) = autotile::tree_trunk();
-    let source = Rect::new(col as f32 * TILE_SIZE, row as f32 * TILE_SIZE, TRUNK_WIDTH, TILE_SIZE);
+    let source = Rect { w: TRUNK_WIDTH, ..Spritesheet::source(TILE_SIZE, autotile::tree_trunk()) };
     let top = ground + perspective.lean(ground, TREE_HEIGHT);
     draw_strip(nature.texture(), source, ground, top, TRUNK_WIDTH);
     top

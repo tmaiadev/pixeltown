@@ -4,7 +4,8 @@ mod trees;
 
 use macroquad::prelude::*;
 
-use crate::map::{autotile, Map, MAP_SIZE};
+use crate::map::autotile::{self, GroundSprite, SpriteCell};
+use crate::map::{Map, MAP_SIZE};
 use crate::utils::frame_animation::FrameAnimation;
 use crate::utils::spritesheet::Spritesheet;
 use camera::{Camera, TileRect, TILE_SIZE};
@@ -18,9 +19,9 @@ pub struct MapView {
     sheet: Spritesheet,
     nature: Spritesheet,
     water: FrameAnimation,
-    cells: Vec<autotile::Tile>,
-    features: Vec<Option<(u8, u8)>>,
-    forests: Vec<Option<(u8, u8)>>,
+    cells: Vec<GroundSprite>,
+    features: Vec<Option<SpriteCell>>,
+    forests: Vec<Option<SpriteCell>>,
     trees: Vec<autotile::TreeCell>,
     forest_trunks: Vec<(u16, u16)>,
     ground: ChunkCache,
@@ -46,7 +47,7 @@ impl MapView {
     }
 
     pub fn set_map(&mut self, map: &Map) {
-        self.cells = autotile::tile_cells(map);
+        self.cells = autotile::ground_sprites(map);
         self.features = autotile::feature_cells(map);
         self.forests = autotile::forest_cells(map);
         self.trees = autotile::tree_cells(map);
@@ -66,15 +67,15 @@ impl MapView {
             |chunk| if animated(chunk) { autotile::WATER_FRAMES } else { 1 },
             |chunk, frame| {
                 for (x, y, i) in chunks::chunk_tiles(chunk) {
-                    let (col, row) = autotile::animated_cell(cells[i], frame, i % MAP_SIZE + i / MAP_SIZE);
-                    sheet.draw_tile(col, row, x, y);
+                    let cell = autotile::animated_cell(cells[i], frame, i % MAP_SIZE + i / MAP_SIZE);
+                    sheet.draw_tile(cell, x, y);
                 }
                 for (x, y, i) in chunks::chunk_tiles(chunk) {
-                    if let Some((col, row)) = features[i] {
-                        nature.draw_tile(col as usize, row as usize, x, y);
+                    if let Some(cell) = features[i] {
+                        nature.draw_tile(cell, x, y);
                     }
-                    if let Some((col, row)) = forests[i] {
-                        nature.draw_tile_tinted(col as usize, row as usize, x, y, FOREST_SHADOW);
+                    if let Some(cell) = forests[i] {
+                        nature.draw_tile_tinted(cell, x, y, FOREST_SHADOW);
                     }
                 }
             },
@@ -83,8 +84,8 @@ impl MapView {
             |_| 1,
             |chunk, _| {
                 for (x, y, i) in chunks::chunk_tiles(chunk) {
-                    if let Some((col, row)) = forests[i] {
-                        nature.draw_tile(col as usize, row as usize, x, y);
+                    if let Some(cell) = forests[i] {
+                        nature.draw_tile(cell, x, y);
                     }
                 }
             },
