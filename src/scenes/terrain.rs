@@ -94,7 +94,10 @@ impl TerrainScene {
                 self.phase = Phase::FadingOut;
                 self.fade_out.start();
             }
-            i => self.selected = TerrainType::ALL[i],
+            i => {
+                self.selected = TerrainType::ALL[i];
+                self.generate();
+            }
         }
     }
 
