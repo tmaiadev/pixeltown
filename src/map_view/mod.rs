@@ -58,55 +58,44 @@ impl MapView {
         self.water.update(dt);
     }
 
-    // Animated tiles are left transparent in the ground layer and drawn every frame.
-    fn bake(&self) {
-        self.ground.render(|chunk| {
-            let tiles = || chunks::chunk_tiles(chunk).filter(|&(_, _, i)| !self.cells[i].is_animated());
-            for (x, y, i) in tiles() {
-                let (col, row) = autotile::animated_cell(self.cells[i], 0, 0);
-                self.sheet.draw_tile(col, row, x, y);
-            }
-            for (x, y, i) in tiles() {
-                if let Some((col, row)) = self.features[i] {
-                    self.nature.draw_tile(col as usize, row as usize, x, y);
+    fn bake(&mut self) {
+        let (cells, features, forests) = (&self.cells, &self.features, &self.forests);
+        let (sheet, nature) = (&self.sheet, &self.nature);
+        let animated = |chunk| chunks::chunk_tiles(chunk).any(|(_, _, i)| cells[i].is_animated());
+        self.ground.render(
+            |chunk| if animated(chunk) { autotile::WATER_FRAMES } else { 1 },
+            |chunk, frame| {
+                for (x, y, i) in chunks::chunk_tiles(chunk) {
+                    let (col, row) = autotile::animated_cell(cells[i], frame, i % MAP_SIZE + i / MAP_SIZE);
+                    sheet.draw_tile(col, row, x, y);
                 }
-                if let Some((col, row)) = self.forests[i] {
-                    self.nature.draw_tile_tinted(col as usize, row as usize, x, y, FOREST_SHADOW);
+                for (x, y, i) in chunks::chunk_tiles(chunk) {
+                    if let Some((col, row)) = features[i] {
+                        nature.draw_tile(col as usize, row as usize, x, y);
+                    }
+                    if let Some((col, row)) = forests[i] {
+                        nature.draw_tile_tinted(col as usize, row as usize, x, y, FOREST_SHADOW);
+                    }
                 }
-            }
-        });
-        self.canopy.render(|chunk| {
-            for (x, y, i) in chunks::chunk_tiles(chunk) {
-                if let Some((col, row)) = self.forests[i] {
-                    self.nature.draw_tile(col as usize, row as usize, x, y);
+            },
+        );
+        self.canopy.render(
+            |_| 1,
+            |chunk, _| {
+                for (x, y, i) in chunks::chunk_tiles(chunk) {
+                    if let Some((col, row)) = forests[i] {
+                        nature.draw_tile(col as usize, row as usize, x, y);
+                    }
                 }
-            }
-        });
+            },
+        );
     }
 
     pub fn draw(&self, camera: &Camera, viewport: Vec2, grid_visible: bool) {
         set_camera(&camera.camera_2d(viewport));
 
         let visible = camera.visible_tiles(viewport);
-        let (x0, y0, x1, y1) = visible;
-        self.ground.draw(visible);
-
-        let frame = self.water.frame();
-        let animated = || {
-            (y0..y1)
-                .flat_map(move |y| (x0..x1).map(move |x| (x, y, y * MAP_SIZE + x)))
-                .filter(|&(_, _, i)| self.cells[i].is_animated())
-        };
-        // Each pass sticks to one spritesheet so consecutive tiles batch into one draw call.
-        for (x, y, i) in animated() {
-            let (col, row) = autotile::animated_cell(self.cells[i], frame, x + y);
-            self.sheet.draw_tile(col, row, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
-        }
-        for (x, y, i) in animated() {
-            if let Some((col, row)) = self.features[i] {
-                self.nature.draw_tile(col as usize, row as usize, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
-            }
-        }
+        self.ground.draw(visible, self.water.frame());
 
         let perspective = camera.perspective(viewport);
         trees::draw_shadows(&self.nature, &self.trees, visible);

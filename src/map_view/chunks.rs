@@ -9,44 +9,54 @@ const CHUNK_TILES: usize = 32;
 const CHUNKS: usize = MAP_SIZE / CHUNK_TILES;
 const CHUNK_PIXELS: f32 = CHUNK_TILES as f32 * TILE_SIZE;
 
-// A map-wide layer baked into one texture per chunk.
+// A map-wide layer baked into textures per chunk, with one texture per animation frame.
 pub struct ChunkCache {
-    targets: Vec<RenderTarget>,
+    targets: Vec<Vec<RenderTarget>>,
 }
 
 impl ChunkCache {
     pub fn new() -> Self {
-        let targets = (0..CHUNKS * CHUNKS)
-            .map(|_| {
-                let target = render_target(CHUNK_PIXELS as u32, CHUNK_PIXELS as u32);
-                target.texture.set_filter(FilterMode::Nearest);
-                target
-            })
-            .collect();
-        Self { targets }
+        Self {
+            targets: (0..CHUNKS * CHUNKS).map(|_| Vec::new()).collect(),
+        }
     }
 
-    // `bake` draws the given chunk; `chunk_tiles` lists what falls inside it.
-    pub fn render(&self, bake: impl Fn(usize)) {
-        for (chunk, target) in self.targets.iter().enumerate() {
+    // `frames` says how many frames a chunk needs; `bake` draws a chunk's frame.
+    pub fn render(&mut self, frames: impl Fn(usize) -> usize, bake: impl Fn(usize, usize)) {
+        for (chunk, targets) in self.targets.iter_mut().enumerate() {
+            let count = frames(chunk).max(1);
+            targets.truncate(count);
+            while targets.len() < count {
+                let target = render_target(CHUNK_PIXELS as u32, CHUNK_PIXELS as u32);
+                target.texture.set_filter(FilterMode::Nearest);
+                targets.push(target);
+            }
             let origin = chunk_origin(chunk);
-            set_camera(&Camera2D {
-                zoom: Vec2::splat(2.0 / CHUNK_PIXELS),
-                target: origin + CHUNK_PIXELS / 2.0,
-                render_target: Some(target.clone()),
-                ..Default::default()
-            });
-            clear_background(BLANK);
-            bake(chunk);
+            for (frame, target) in targets.iter().enumerate() {
+                set_camera(&Camera2D {
+                    zoom: Vec2::splat(2.0 / CHUNK_PIXELS),
+                    target: origin + CHUNK_PIXELS / 2.0,
+                    render_target: Some(target.clone()),
+                    ..Default::default()
+                });
+                clear_background(BLANK);
+                bake(chunk, frame);
+            }
         }
         // clear_background is immediate, so a later clear must not land on the last chunk.
         set_internal_camera();
     }
 
-    pub fn draw(&self, visible: (usize, usize, usize, usize)) {
+    // Chunks baked with a single frame show it at every frame.
+    fn texture(&self, chunk: usize, frame: usize) -> &Texture2D {
+        let targets = &self.targets[chunk];
+        &targets[frame % targets.len()].texture
+    }
+
+    pub fn draw(&self, visible: (usize, usize, usize, usize), frame: usize) {
         for chunk in visible_chunks(visible) {
             let origin = chunk_origin(chunk);
-            draw_texture(&self.targets[chunk].texture, origin.x, origin.y, WHITE);
+            draw_texture(self.texture(chunk, frame), origin.x, origin.y, WHITE);
         }
     }
 
@@ -55,7 +65,7 @@ impl ChunkCache {
             let origin = chunk_origin(chunk);
             let area = perspective.raise(Rect::new(origin.x, origin.y, CHUNK_PIXELS, CHUNK_PIXELS), height);
             draw_texture_ex(
-                &self.targets[chunk].texture,
+                self.texture(chunk, 0),
                 area.x,
                 area.y,
                 WHITE,
