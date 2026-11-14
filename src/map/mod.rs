@@ -333,6 +333,8 @@ fn place_features(tiles: &[Terrain], seed: u64) -> Vec<Option<Feature>> {
         }
     }
 
+    thin_forests(&mut features);
+
     for y in 0..MAP_SIZE {
         for x in 0..MAP_SIZE {
             if !rng.chance(ROCK_CHANCE) {
@@ -348,6 +350,32 @@ fn place_features(tiles: &[Terrain], seed: u64) -> Vec<Option<Feature>> {
         }
     }
     features
+}
+
+// One-tile-thick forest strips look skinny once their edges round off, so they become trees.
+fn thin_forests(features: &mut [Option<Feature>]) {
+    let is_forest = |features: &[Option<Feature>], x: i32, y: i32| {
+        !Map::in_bounds(x, y) || features[idx(x as usize, y as usize)] == Some(Feature::Forest)
+    };
+    loop {
+        let mut changed = false;
+        for y in 0..MAP_SIZE as i32 {
+            for x in 0..MAP_SIZE as i32 {
+                if !is_forest(features, x, y) {
+                    continue;
+                }
+                let vertical = is_forest(features, x, y - 1) || is_forest(features, x, y + 1);
+                let horizontal = is_forest(features, x - 1, y) || is_forest(features, x + 1, y);
+                if !vertical || !horizontal {
+                    features[idx(x as usize, y as usize)] = Some(Feature::Tree);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            return;
+        }
+    }
 }
 
 fn place_rock(tiles: &[Terrain], features: &mut [Option<Feature>], i: usize) {
@@ -570,6 +598,24 @@ mod tests {
                 }
             }
             assert!(clustered as f32 > count(&map, Feature::Forest) as f32 * 0.9);
+        }
+    }
+
+    #[test]
+    fn forests_are_never_one_tile_thick() {
+        for kind in TerrainType::ALL {
+            let map = Map::generate(kind, 9);
+            let forest = |x: i32, y: i32| {
+                !Map::in_bounds(x, y) || map.feature(x as usize, y as usize) == Some(Feature::Forest)
+            };
+            for y in 0..MAP_SIZE as i32 {
+                for x in 0..MAP_SIZE as i32 {
+                    if map.feature(x as usize, y as usize) == Some(Feature::Forest) {
+                        assert!(forest(x, y - 1) || forest(x, y + 1));
+                        assert!(forest(x - 1, y) || forest(x + 1, y));
+                    }
+                }
+            }
         }
     }
 

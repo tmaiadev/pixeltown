@@ -11,8 +11,9 @@ const GRASS_EDGE_START: usize = 4 * SHEET_COLUMNS;
 
 const FEATURE_VARIANTS: usize = 3;
 const TREE_START: usize = 0;
-const FOREST_START: usize = TREE_START + FEATURE_VARIANTS;
-const ROCK_START: usize = FOREST_START + FEATURE_VARIANTS;
+const ROCK_START: usize = TREE_START + FEATURE_VARIANTS;
+const FOREST_START: usize = SHEET_COLUMNS;
+const FOREST_PERIOD: usize = 2;
 
 pub const WATER_FRAMES: usize = 4;
 const FRAMES_START_ROW: usize = 7;
@@ -70,16 +71,27 @@ const BLOB_INDEX: [u8; 256] = {
 
 const _: () = assert!(SHORE_START + BLOB_COUNT <= GRASS_EDGE_START);
 
-fn neighbor_mask(map: &Map, x: usize, y: usize, other: Terrain) -> u8 {
-    let own = map.get(x, y);
+fn mask_where(x: usize, y: usize, matches: impl Fn(i32, i32) -> bool) -> u8 {
     let (x, y) = (x as i32, y as i32);
     let mut mask = 0;
     for (dx, dy, bit) in CARDINALS.into_iter().chain(DIAGONALS) {
-        if map.get_or(x + dx, y + dy, own) == other {
+        if matches(x + dx, y + dy) {
             mask |= bit;
         }
     }
     normalize(mask)
+}
+
+fn neighbor_mask(map: &Map, x: usize, y: usize, other: Terrain) -> u8 {
+    let own = map.get(x, y);
+    mask_where(x, y, |nx, ny| map.get_or(nx, ny, own) == other)
+}
+
+// Map edges count as forest so forests run off the map instead of closing up.
+fn forest_edge_mask(map: &Map, x: usize, y: usize) -> u8 {
+    mask_where(x, y, |nx, ny| {
+        Map::in_bounds(nx, ny) && map.feature(nx as usize, ny as usize) != Some(Feature::Forest)
+    })
 }
 
 fn variant(x: usize, y: usize, count: usize) -> usize {
@@ -106,12 +118,17 @@ pub fn tile_cell(map: &Map, x: usize, y: usize) -> (usize, usize) {
 }
 
 pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
-    let start = match map.feature(x, y)? {
-        Feature::Tree => TREE_START,
-        Feature::Forest => FOREST_START,
-        Feature::Rock => ROCK_START,
+    let index = match map.feature(x, y)? {
+        Feature::Tree => TREE_START + variant(x, y, FEATURE_VARIANTS),
+        Feature::Rock => ROCK_START + variant(x, y, FEATURE_VARIANTS),
+        Feature::Forest => {
+            // The canopy texture spans FOREST_PERIOD tiles, so pick the slice by position.
+            let blob = BLOB_INDEX[forest_edge_mask(map, x, y) as usize] as usize;
+            let position = (y % FOREST_PERIOD) * FOREST_PERIOD + x % FOREST_PERIOD;
+            FOREST_START + blob * FOREST_PERIOD * FOREST_PERIOD + position
+        }
     };
-    Some(cell(start + variant(x, y, FEATURE_VARIANTS)))
+    Some(cell(index))
 }
 
 pub fn feature_cells(map: &Map) -> Vec<Option<(u8, u8)>> {
@@ -212,12 +229,7 @@ mod tests {
     fn features_pick_cells_from_their_own_section() {
         let mut map = map_from(&["###"]);
         assert_eq!(feature_cell(&map, 0, 0), None);
-        let sections = [
-            (Feature::Tree, TREE_START),
-            (Feature::Forest, FOREST_START),
-            (Feature::Rock, ROCK_START),
-        ];
-        for (feature, start) in sections {
+        for (feature, start) in [(Feature::Tree, TREE_START), (Feature::Rock, ROCK_START)] {
             for x in 0..3 {
                 map.features[idx(x, 0)] = Some(feature);
                 let (col, row) = feature_cell(&map, x, 0).unwrap();
@@ -225,6 +237,33 @@ mod tests {
                 assert!((start..start + FEATURE_VARIANTS).contains(&col));
             }
         }
+    }
+
+    fn forest_index(map: &Map, x: usize, y: usize) -> usize {
+        let (col, row) = feature_cell(map, x, y).unwrap();
+        row * SHEET_COLUMNS + col - FOREST_START
+    }
+
+    #[test]
+    fn forest_inside_uses_plain_canopy_sliced_by_position() {
+        let mut map = map_from(&["###", "###", "###"]);
+        for i in 0..9 {
+            map.features[idx(i % 3, i / 3)] = Some(Feature::Forest);
+        }
+        assert_eq!(forest_index(&map, 1, 1), 3);
+        assert_eq!(forest_index(&map, 0, 0), 0);
+        assert_eq!(forest_index(&map, 1, 0), 1);
+        assert_eq!(forest_index(&map, 0, 1), 2);
+    }
+
+    #[test]
+    fn forest_edge_picks_blob_for_non_forest_neighbors() {
+        let mut map = map_from(&["###", "###", "###"]);
+        for i in 3..9 {
+            map.features[idx(i % 3, i / 3)] = Some(Feature::Forest);
+        }
+        let blob = BLOB_INDEX[N as usize] as usize;
+        assert_eq!(forest_index(&map, 1, 1), blob * 4 + 3);
     }
 
     #[test]
