@@ -7,6 +7,8 @@ use std::collections::VecDeque;
 pub const MAP_SIZE: usize = 256;
 const BORDER_MARGIN: usize = 8;
 const MAX_BEACH: u8 = 3;
+const SEA_RATIO: f32 = 0.2;
+const SEA_DEPTH_VARIATION: f32 = 16.0;
 const NEIGHBORS: [(i32, i32); 8] = [
     (-1, -1),
     (0, -1),
@@ -135,7 +137,7 @@ fn inland(rng: &mut Rng, river: &mut [bool]) -> Vec<bool> {
     let mut land = vec![true; MAP_SIZE * MAP_SIZE];
     let vertical = rng.chance(0.5);
     let flip = rng.chance(0.5);
-    carve_river(&mut land, river, rng, vertical, flip, 0);
+    carve_river(&mut land, river, rng, vertical, flip);
     land
 }
 
@@ -159,8 +161,9 @@ fn archipelago(seed: u64) -> Vec<bool> {
 fn seaside(rng: &mut Rng, seed: u64, river: &mut [bool]) -> Vec<bool> {
     let mut land = vec![true; MAP_SIZE * MAP_SIZE];
     let sea = SIDES[rng.range(0, 3) as usize];
+    let min_depth = MAP_SIZE as f32 * SEA_RATIO - SEA_DEPTH_VARIATION / 2.0;
     let depth: Vec<usize> = (0..MAP_SIZE)
-        .map(|i| 3 + (fbm(i as f32 * 0.04, 0.5, seed, 3) * 10.0) as usize)
+        .map(|i| (min_depth + fbm(i as f32 * 0.04, 0.5, seed, 3) * SEA_DEPTH_VARIATION) as usize)
         .collect();
 
     for y in 0..MAP_SIZE {
@@ -180,8 +183,7 @@ fn seaside(rng: &mut Rng, seed: u64, river: &mut [bool]) -> Vec<bool> {
     if rng.chance(0.5) {
         let vertical = matches!(sea, Side::North | Side::South);
         let flip = matches!(sea, Side::North | Side::West);
-        let start = rng.range(0, MAP_SIZE as u32 / 2) as usize;
-        carve_river(&mut land, river, rng, vertical, flip, start);
+        carve_river(&mut land, river, rng, vertical, flip);
     }
     land
 }
@@ -201,14 +203,13 @@ fn carve_river(
     rng: &mut Rng,
     vertical: bool,
     flip: bool,
-    start: usize,
 ) {
     let quarter = MAP_SIZE as u32 / 4;
     let mut across = rng.range(quarter, MAP_SIZE as u32 - quarter) as f32;
     let mut drift = 0.0f32;
     let half_width = 2;
 
-    for along in start..MAP_SIZE {
+    for along in 0..MAP_SIZE {
         drift = (drift + (rng.next_f32() - 0.5) * 0.6).clamp(-1.0, 1.0);
         across = (across + drift).clamp(4.0, MAP_SIZE as f32 - 5.0);
         for offset in -half_width..=half_width {
@@ -367,12 +368,28 @@ mod tests {
     fn seaside_has_exactly_one_full_water_edge() {
         for seed in SEEDS {
             let map = Map::generate(TerrainType::Seaside, seed);
-            assert!(land_ratio(&map) > 0.8);
+            assert!((1.0 - land_ratio(&map) - SEA_RATIO).abs() < 0.05);
             let sea_edges = SIDES
                 .iter()
                 .filter(|&&side| all_water(&edge_tiles(&map, side)))
                 .count();
             assert_eq!(sea_edges, 1);
+        }
+    }
+
+    #[test]
+    fn seaside_river_spans_from_the_far_edge_to_the_sea() {
+        for seed in SEEDS {
+            let map = Map::generate(TerrainType::Seaside, seed);
+            let has_river = (0..MAP_SIZE * MAP_SIZE).any(|i| map.river[i]);
+            if !has_river {
+                continue;
+            }
+            let reaches = |x: usize, y: usize| map.is_river(x, y);
+            let far_edge = (0..MAP_SIZE).any(|i| {
+                reaches(i, 0) || reaches(i, MAP_SIZE - 1) || reaches(0, i) || reaches(MAP_SIZE - 1, i)
+            });
+            assert!(far_edge);
         }
     }
 
