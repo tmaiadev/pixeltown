@@ -63,24 +63,31 @@ const SIDES: [Side; 4] = [Side::North, Side::South, Side::West, Side::East];
 
 pub struct Map {
     tiles: Vec<Terrain>,
+    river: Vec<bool>,
 }
 
 impl Map {
     pub fn generate(kind: TerrainType, seed: u64) -> Self {
         let mut rng = Rng::new(seed);
+        let mut river = vec![false; MAP_SIZE * MAP_SIZE];
         let land = match kind {
-            TerrainType::Inland => inland(&mut rng),
+            TerrainType::Inland => inland(&mut rng, &mut river),
             TerrainType::Island => island(seed),
             TerrainType::Archipelago => archipelago(seed),
-            TerrainType::Seaside => seaside(&mut rng, seed),
+            TerrainType::Seaside => seaside(&mut rng, seed, &mut river),
         };
         Self {
             tiles: add_beaches(&land, seed),
+            river,
         }
     }
 
     pub fn get(&self, x: usize, y: usize) -> Terrain {
         self.tiles[y * MAP_SIZE + x]
+    }
+
+    pub fn is_river(&self, x: usize, y: usize) -> bool {
+        self.river[idx(x, y)]
     }
 
     pub fn in_bounds(x: i32, y: i32) -> bool {
@@ -124,11 +131,11 @@ fn height_field(height: impl Fn(usize, usize) -> f32) -> Vec<f32> {
     heights
 }
 
-fn inland(rng: &mut Rng) -> Vec<bool> {
+fn inland(rng: &mut Rng, river: &mut [bool]) -> Vec<bool> {
     let mut land = vec![true; MAP_SIZE * MAP_SIZE];
     let vertical = rng.chance(0.5);
     let flip = rng.chance(0.5);
-    carve_river(&mut land, rng, vertical, flip, 0);
+    carve_river(&mut land, river, rng, vertical, flip, 0);
     land
 }
 
@@ -149,7 +156,7 @@ fn archipelago(seed: u64) -> Vec<bool> {
     land_from_heights(&heights, 0.5)
 }
 
-fn seaside(rng: &mut Rng, seed: u64) -> Vec<bool> {
+fn seaside(rng: &mut Rng, seed: u64, river: &mut [bool]) -> Vec<bool> {
     let mut land = vec![true; MAP_SIZE * MAP_SIZE];
     let sea = SIDES[rng.range(0, 3) as usize];
     let depth: Vec<usize> = (0..MAP_SIZE)
@@ -174,7 +181,7 @@ fn seaside(rng: &mut Rng, seed: u64) -> Vec<bool> {
         let vertical = matches!(sea, Side::North | Side::South);
         let flip = matches!(sea, Side::North | Side::West);
         let start = rng.range(0, MAP_SIZE as u32 / 2) as usize;
-        carve_river(&mut land, rng, vertical, flip, start);
+        carve_river(&mut land, river, rng, vertical, flip, start);
     }
     land
 }
@@ -188,7 +195,14 @@ fn river_point(vertical: bool, flip: bool, along: usize, across: i32) -> (i32, i
     }
 }
 
-fn carve_river(land: &mut [bool], rng: &mut Rng, vertical: bool, flip: bool, start: usize) {
+fn carve_river(
+    land: &mut [bool],
+    river: &mut [bool],
+    rng: &mut Rng,
+    vertical: bool,
+    flip: bool,
+    start: usize,
+) {
     let quarter = MAP_SIZE as u32 / 4;
     let mut across = rng.range(quarter, MAP_SIZE as u32 - quarter) as f32;
     let mut drift = 0.0f32;
@@ -200,7 +214,9 @@ fn carve_river(land: &mut [bool], rng: &mut Rng, vertical: bool, flip: bool, sta
         for offset in -half_width..=half_width {
             let (x, y) = river_point(vertical, flip, along, across as i32 + offset);
             if Map::in_bounds(x, y) {
-                land[idx(x as usize, y as usize)] = false;
+                let i = idx(x as usize, y as usize);
+                river[i] |= land[i];
+                land[i] = false;
             }
         }
     }

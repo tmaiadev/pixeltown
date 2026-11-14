@@ -31,7 +31,7 @@ pub struct TerrainScene {
     sheet: Spritesheet,
     water: FrameAnimation,
     map: Map,
-    cells: Vec<(u8, u8)>,
+    cells: Vec<autotile::Tile>,
     selected: TerrainType,
     camera: Camera,
     rng: Rng,
@@ -134,8 +134,8 @@ impl TerrainScene {
         let frame = self.water.frame();
         for y in y0..y1 {
             for x in x0..x1 {
-                let cell = self.cells[y * MAP_SIZE + x];
-                let (col, row) = autotile::animated_cell(cell, frame, x + y);
+                let tile = self.cells[y * MAP_SIZE + x];
+                let (col, row) = autotile::animated_cell(tile, frame, x + y);
                 self.sheet.draw_tile(
                     col as usize,
                     row as usize,
