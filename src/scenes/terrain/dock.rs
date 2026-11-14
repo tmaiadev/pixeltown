@@ -5,9 +5,10 @@ use crate::map::TerrainType;
 use crate::ui::panel::{draw_button, draw_panel, rgb, with_alpha, ButtonState, TEXT};
 use crate::ui::text::draw_text_centered;
 
-pub const BUTTON_COUNT: usize = 6;
-pub const GENERATE: usize = 4;
-pub const ACCEPT: usize = 5;
+const TYPE_COUNT: usize = TerrainType::ALL.len();
+pub const GENERATE: usize = TYPE_COUNT;
+pub const ACCEPT: usize = TYPE_COUNT + 1;
+pub const BUTTON_COUNT: usize = TYPE_COUNT + 2;
 
 const PAD: f32 = 8.0;
 const GAP: f32 = 6.0;
@@ -25,6 +26,29 @@ const WATER: Color = rgb(47, 111, 192);
 const GENERATE_FILL: Color = rgb(58, 104, 168);
 const ACCEPT_FILL: Color = rgb(62, 148, 76);
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DockButton {
+    Terrain(TerrainType),
+    Generate,
+    Accept,
+}
+
+impl DockButton {
+    pub fn at(index: usize) -> Self {
+        match index {
+            GENERATE => Self::Generate,
+            ACCEPT => Self::Accept,
+            i => Self::Terrain(TerrainType::ALL[i]),
+        }
+    }
+}
+
+enum Arrangement {
+    Wide,
+    Medium,
+    Narrow,
+}
+
 pub struct Dock {
     pub panel: Rect,
     pub buttons: [Rect; BUTTON_COUNT],
@@ -41,17 +65,25 @@ fn button(x: f32, y: f32, w: f32) -> Rect {
 }
 
 pub fn layout(width: f32, height: f32) -> Dock {
-    let types_w = 4.0 * TYPE_WIDTH + 3.0 * GAP;
+    let types_w = TYPE_COUNT as f32 * TYPE_WIDTH + (TYPE_COUNT - 1) as f32 * GAP;
     let actions_w = 2.0 * ACTION_WIDTH + GAP;
     let wide_w = types_w + GROUP_GAP + actions_w + 2.0 * PAD;
     let medium_w = types_w + 2.0 * PAD;
 
-    let (panel_w, panel_h) = if width >= wide_w + 2.0 * MARGIN {
-        (wide_w, BUTTON_HEIGHT + 2.0 * PAD)
+    let arrangement = if width >= wide_w + 2.0 * MARGIN {
+        Arrangement::Wide
     } else if width >= medium_w + 2.0 * MARGIN {
-        (medium_w, 2.0 * BUTTON_HEIGHT + GAP + 2.0 * PAD)
+        Arrangement::Medium
     } else {
-        (width - 2.0 * MARGIN, 3.0 * BUTTON_HEIGHT + 2.0 * GAP + 2.0 * PAD)
+        Arrangement::Narrow
+    };
+    let (panel_w, panel_h) = match arrangement {
+        Arrangement::Wide => (wide_w, BUTTON_HEIGHT + 2.0 * PAD),
+        Arrangement::Medium => (medium_w, 2.0 * BUTTON_HEIGHT + GAP + 2.0 * PAD),
+        Arrangement::Narrow => (
+            width - 2.0 * MARGIN,
+            3.0 * BUTTON_HEIGHT + 2.0 * GAP + 2.0 * PAD,
+        ),
     };
     let panel = Rect::new(
         ((width - panel_w) / 2.0).round(),
@@ -62,41 +94,47 @@ pub fn layout(width: f32, height: f32) -> Dock {
     let (left, top, inner_w) = (panel.x + PAD, panel.y + PAD, panel.w - 2.0 * PAD);
 
     let mut buttons = [Rect::default(); BUTTON_COUNT];
-    if width >= wide_w + 2.0 * MARGIN {
-        let mut x = left;
-        for slot in buttons.iter_mut().take(4) {
-            *slot = button(x, top, TYPE_WIDTH);
-            x += TYPE_WIDTH + GAP;
+    let (types, actions) = buttons.split_at_mut(GENERATE);
+    match arrangement {
+        Arrangement::Wide => {
+            let mut x = left;
+            for slot in types {
+                *slot = button(x, top, TYPE_WIDTH);
+                x += TYPE_WIDTH + GAP;
+            }
+            x += GROUP_GAP - GAP;
+            for slot in actions {
+                *slot = button(x, top, ACTION_WIDTH);
+                x += ACTION_WIDTH + GAP;
+            }
         }
-        x += GROUP_GAP - GAP;
-        for slot in buttons.iter_mut().skip(4) {
-            *slot = button(x, top, ACTION_WIDTH);
-            x += ACTION_WIDTH + GAP;
+        Arrangement::Medium => {
+            for (i, slot) in types.iter_mut().enumerate() {
+                *slot = button(left + i as f32 * (TYPE_WIDTH + GAP), top, TYPE_WIDTH);
+            }
+            place_action_row(actions, left, top + BUTTON_HEIGHT + GAP, inner_w);
         }
-    } else if width >= medium_w + 2.0 * MARGIN {
-        for (i, slot) in buttons.iter_mut().take(4).enumerate() {
-            *slot = button(left + i as f32 * (TYPE_WIDTH + GAP), top, TYPE_WIDTH);
+        Arrangement::Narrow => {
+            let half = (inner_w - GAP) / 2.0;
+            for (i, slot) in types.iter_mut().enumerate() {
+                let (col, row) = ((i % 2) as f32, (i / 2) as f32);
+                *slot = button(
+                    left + col * (half + GAP),
+                    top + row * (BUTTON_HEIGHT + GAP),
+                    half,
+                );
+            }
+            place_action_row(actions, left, top + 2.0 * (BUTTON_HEIGHT + GAP), inner_w);
         }
-        let action_w = (inner_w - GAP) / 2.0;
-        let y = top + BUTTON_HEIGHT + GAP;
-        buttons[GENERATE] = button(left, y, action_w);
-        buttons[ACCEPT] = button(left + action_w + GAP, y, action_w);
-    } else {
-        let half = (inner_w - GAP) / 2.0;
-        for (i, slot) in buttons.iter_mut().take(4).enumerate() {
-            let (col, row) = ((i % 2) as f32, (i / 2) as f32);
-            *slot = button(
-                left + col * (half + GAP),
-                top + row * (BUTTON_HEIGHT + GAP),
-                half,
-            );
-        }
-        let y = top + 2.0 * (BUTTON_HEIGHT + GAP);
-        buttons[GENERATE] = button(left, y, half);
-        buttons[ACCEPT] = button(left + half + GAP, y, half);
     }
 
     Dock { panel, buttons }
+}
+
+fn place_action_row(actions: &mut [Rect], left: f32, y: f32, inner_w: f32) {
+    let w = (inner_w - GAP) / 2.0;
+    actions[0] = button(left, y, w);
+    actions[1] = button(left + w + GAP, y, w);
 }
 
 pub fn move_focus(focus: usize, action: Action) -> usize {
@@ -151,35 +189,47 @@ pub struct DockView<'a> {
 pub fn draw(dock: &Dock, view: &DockView) {
     draw_panel(dock.panel, view.alpha);
 
-    for (i, rect) in dock.buttons.iter().enumerate() {
+    for (i, &rect) in dock.buttons.iter().enumerate() {
         let hovered = view.hovered == Some(i);
         let focused = view.focus == Some(i);
-        let center = vec2(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
-
-        if let Some(&kind) = TerrainType::ALL.get(i) {
-            let state = ButtonState::new(kind == view.selected, hovered);
-            draw_button(*rect, state, None, focused, view.alpha);
-            let icon_at = vec2((center.x - ICON_SIZE.x / 2.0).round(), rect.y + 6.0);
-            draw_icon(kind, icon_at, view.alpha);
-            let label_center = vec2(center.x, rect.y + rect.h - 10.0);
-            draw_text_centered(
-                view.font,
-                kind.label(),
-                label_center,
-                LABEL_SIZE,
-                with_alpha(state.text_color(), view.alpha),
-            );
-        } else {
-            let (label, fill) = if i == GENERATE {
-                ("Generate", GENERATE_FILL)
-            } else {
-                ("Accept", ACCEPT_FILL)
-            };
-            let state = ButtonState::new(false, hovered);
-            draw_button(*rect, state, Some(fill), focused, view.alpha);
-            draw_text_centered(view.font, label, center, LABEL_SIZE, with_alpha(TEXT, view.alpha));
+        match DockButton::at(i) {
+            DockButton::Terrain(kind) => draw_terrain_button(rect, kind, view, hovered, focused),
+            DockButton::Generate => {
+                draw_action_button(rect, "Generate", GENERATE_FILL, view, hovered, focused)
+            }
+            DockButton::Accept => {
+                draw_action_button(rect, "Accept", ACCEPT_FILL, view, hovered, focused)
+            }
         }
     }
+}
+
+fn draw_terrain_button(rect: Rect, kind: TerrainType, view: &DockView, hovered: bool, focused: bool) {
+    let state = ButtonState::new(kind == view.selected, hovered);
+    draw_button(rect, state, None, focused, view.alpha);
+    let center_x = rect.x + rect.w / 2.0;
+    let icon_at = vec2((center_x - ICON_SIZE.x / 2.0).round(), rect.y + 6.0);
+    draw_icon(kind, icon_at, view.alpha);
+    draw_text_centered(
+        view.font,
+        kind.label(),
+        vec2(center_x, rect.y + rect.h - 10.0),
+        LABEL_SIZE,
+        with_alpha(state.text_color(), view.alpha),
+    );
+}
+
+fn draw_action_button(
+    rect: Rect,
+    label: &str,
+    fill: Color,
+    view: &DockView,
+    hovered: bool,
+    focused: bool,
+) {
+    let state = ButtonState::new(false, hovered);
+    draw_button(rect, state, Some(fill), focused, view.alpha);
+    draw_text_centered(view.font, label, rect.center(), LABEL_SIZE, with_alpha(TEXT, view.alpha));
 }
 
 #[cfg(test)]
@@ -194,10 +244,6 @@ mod tests {
         (360.0, 480.0),
         (220.0, 480.0),
     ];
-
-    fn overlaps(a: &Rect, b: &Rect) -> bool {
-        a.overlaps(b)
-    }
 
     #[test]
     fn dock_fits_inside_the_screen_at_every_aspect_ratio() {
@@ -220,7 +266,7 @@ mod tests {
             let dock = layout(w, h);
             for i in 0..BUTTON_COUNT {
                 for j in i + 1..BUTTON_COUNT {
-                    assert!(!overlaps(&dock.buttons[i], &dock.buttons[j]), "{w}x{h} {i} {j}");
+                    assert!(!dock.buttons[i].overlaps(&dock.buttons[j]), "{w}x{h} {i} {j}");
                 }
             }
         }

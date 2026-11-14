@@ -2,8 +2,10 @@ use macroquad::prelude::*;
 
 use super::{terrain::TerrainScene, Scene};
 use crate::input::{Action, Device, Input};
+use crate::ui::image::draw_texture_scaled;
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
+use crate::utils::assets::{load_font, load_logo};
 use crate::{internal_width, INTERNAL_HEIGHT};
 
 const FADE_IN: f32 = 1.0;
@@ -18,7 +20,31 @@ const CREDIT_SIZE: u16 = 8;
 const CREDIT_BOTTOM_MARGIN: f32 = 24.0;
 const CURSOR_OFFSET: f32 = 24.0;
 
-const ITEMS: [&str; 4] = ["Start New Game", "Load Game", "Options", "Exit"];
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum MenuItem {
+    StartNewGame,
+    LoadGame,
+    Options,
+    Exit,
+}
+
+impl MenuItem {
+    const ALL: [MenuItem; 4] = [
+        MenuItem::StartNewGame,
+        MenuItem::LoadGame,
+        MenuItem::Options,
+        MenuItem::Exit,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            MenuItem::StartNewGame => "Start New Game",
+            MenuItem::LoadGame => "Load Game",
+            MenuItem::Options => "Options",
+            MenuItem::Exit => "Exit",
+        }
+    }
+}
 
 fn wrap_selection(current: usize, delta: isize, len: usize) -> usize {
     (current as isize + delta).rem_euclid(len as isize) as usize
@@ -32,44 +58,33 @@ fn item_at(point: Vec2, center_x: f32) -> Option<usize> {
     if (point.x - center_x).abs() > ITEM_HALF_WIDTH {
         return None;
     }
-    (0..ITEMS.len()).find(|&i| (point.y - item_y(i)).abs() <= ITEM_SPACING / 2.0)
+    (0..MenuItem::ALL.len()).find(|&i| (point.y - item_y(i)).abs() <= ITEM_SPACING / 2.0)
 }
 
 pub struct MenuScene {
     font: Font,
     logo: Texture2D,
-    fade: Animation,
+    fade_in: Animation,
     fade_out: Animation,
     selected: usize,
 }
 
 impl MenuScene {
     pub fn new() -> Self {
-        let mut font =
-            load_ttf_font_from_bytes(include_bytes!("../../assets/fonts/PressStart2P.ttf"))
-                .expect("valid font");
-        font.set_filter(FilterMode::Nearest);
-
-        let logo = Texture2D::from_file_with_format(
-            include_bytes!("../../assets/sprites/logo.png"),
-            Some(ImageFormat::Png),
-        );
-        logo.set_filter(FilterMode::Nearest);
-
         Self {
-            font,
-            logo,
-            fade: Animation::new(FADE_IN).autostart(),
+            font: load_font(),
+            logo: load_logo(),
+            fade_in: Animation::new(FADE_IN).autostart(),
             fade_out: Animation::new(FADE_OUT),
             selected: 0,
         }
     }
 
     fn activate(&mut self) {
-        match self.selected {
-            0 => self.fade_out.start(),
-            3 => std::process::exit(0),
-            _ => {}
+        match MenuItem::ALL[self.selected] {
+            MenuItem::StartNewGame => self.fade_out.start(),
+            MenuItem::Exit => std::process::exit(0),
+            MenuItem::LoadGame | MenuItem::Options => {}
         }
     }
 }
@@ -77,7 +92,7 @@ impl MenuScene {
 impl Scene for MenuScene {
     fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
         let dt = get_frame_time();
-        self.fade.update(dt);
+        self.fade_in.update(dt);
         if self.fade_out.has_started() {
             self.fade_out.update(dt);
             return self
@@ -85,15 +100,15 @@ impl Scene for MenuScene {
                 .has_ended()
                 .then(|| Box::new(TerrainScene::new()) as Box<dyn Scene>);
         }
-        if !self.fade.has_ended() {
+        if !self.fade_in.has_ended() {
             return None;
         }
 
         if input.pressed(Action::Up) {
-            self.selected = wrap_selection(self.selected, -1, ITEMS.len());
+            self.selected = wrap_selection(self.selected, -1, MenuItem::ALL.len());
         }
         if input.pressed(Action::Down) {
-            self.selected = wrap_selection(self.selected, 1, ITEMS.len());
+            self.selected = wrap_selection(self.selected, 1, MenuItem::ALL.len());
         }
         if input.pressed(Action::Confirm) {
             self.activate();
@@ -120,23 +135,14 @@ impl Scene for MenuScene {
     fn draw(&self) {
         clear_background(BLACK);
         let center_x = internal_width() / 2.0;
-        let alpha = self.fade.progress() * (1.0 - self.fade_out.progress());
+        let alpha = self.fade_in.progress() * (1.0 - self.fade_out.progress());
         let tint = Color::new(1.0, 1.0, 1.0, alpha);
 
-        let size = self.logo.size() * LOGO_SCALE;
-        draw_texture_ex(
-            &self.logo,
-            (center_x - size.x / 2.0).round(),
-            LOGO_TOP,
-            tint,
-            DrawTextureParams {
-                dest_size: Some(size),
-                ..Default::default()
-            },
-        );
+        let logo_x = (center_x - self.logo.width() * LOGO_SCALE / 2.0).round();
+        draw_texture_scaled(&self.logo, vec2(logo_x, LOGO_TOP), LOGO_SCALE, tint);
 
-        for (i, label) in ITEMS.iter().enumerate() {
-            let y = item_y(i);
+        for (i, item) in MenuItem::ALL.iter().enumerate() {
+            let (label, y) = (item.label(), item_y(i));
             draw_text_centered(&self.font, label, vec2(center_x, y), ITEM_SIZE, tint);
             if i == self.selected {
                 let width = measure_text(label, Some(&self.font), ITEM_SIZE, 1.0).width;

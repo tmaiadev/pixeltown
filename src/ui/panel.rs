@@ -70,15 +70,13 @@ pub fn draw_button(rect: Rect, state: ButtonState, fill: Option<Color>, focused:
         Some(color) => (color, lighten(color)),
         None => (BUTTON_FILL, BUTTON_HOVER),
     };
-    let (fill, light, shadow) = match state {
-        ButtonState::Normal => (base, lighten(base), darken(base)),
-        ButtonState::Hovered => (hover, lighten(hover), darken(hover)),
-        ButtonState::Selected => (SELECTED_FILL, lighten(SELECTED_FILL), darken(SELECTED_FILL)),
-        ButtonState::SelectedHovered => {
-            (SELECTED_HOVER, lighten(SELECTED_HOVER), darken(SELECTED_HOVER))
-        }
+    let fill = match state {
+        ButtonState::Normal => base,
+        ButtonState::Hovered => hover,
+        ButtonState::Selected => SELECTED_FILL,
+        ButtonState::SelectedHovered => SELECTED_HOVER,
     };
-    bevel_box(rect, fill, light, shadow, alpha);
+    bevel_box(rect, fill, lighten(fill), darken(fill), alpha);
 
     if focused {
         let ring = with_alpha(FOCUS_RING, alpha);

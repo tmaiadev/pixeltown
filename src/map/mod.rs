@@ -85,7 +85,7 @@ impl Map {
     }
 
     pub fn get(&self, x: usize, y: usize) -> Terrain {
-        self.tiles[y * MAP_SIZE + x]
+        self.tiles[idx(x, y)]
     }
 
     pub fn is_river(&self, x: usize, y: usize) -> bool {
@@ -160,7 +160,7 @@ fn archipelago(seed: u64) -> Vec<bool> {
 
 fn seaside(rng: &mut Rng, seed: u64, river: &mut [bool]) -> Vec<bool> {
     let mut land = vec![true; MAP_SIZE * MAP_SIZE];
-    let sea = SIDES[rng.range(0, 3) as usize];
+    let sea = SIDES[rng.range(0, SIDES.len() as u32 - 1) as usize];
     let min_depth = MAP_SIZE as f32 * SEA_RATIO - SEA_DEPTH_VARIATION / 2.0;
     let depth: Vec<usize> = (0..MAP_SIZE)
         .map(|i| (min_depth + fbm(i as f32 * 0.04, 0.5, seed, 3) * SEA_DEPTH_VARIATION) as usize)
@@ -300,6 +300,27 @@ mod tests {
 
     fn all_water(tiles: &[Terrain]) -> bool {
         tiles.iter().all(|&t| t == Terrain::Water)
+    }
+
+    fn fingerprint(map: &Map) -> u64 {
+        let cells = map.tiles.iter().zip(&map.river);
+        cells.fold(0xCBF2_9CE4_8422_2325, |hash, (&terrain, &river)| {
+            let byte = terrain as u64 | (river as u64) << 2;
+            (hash ^ byte).wrapping_mul(0x0100_0000_01B3)
+        })
+    }
+
+    #[test]
+    fn generation_output_is_stable_across_refactors() {
+        let expected = [
+            0x47b5_b26c_c0e3_4ea3,
+            0x9d92_e6d4_9302_290f,
+            0xe97d_eeda_b7f0_3693,
+            0x8532_ebde_a11f_923c,
+        ];
+        for (kind, expected) in TerrainType::ALL.into_iter().zip(expected) {
+            assert_eq!(fingerprint(&Map::generate(kind, 42)), expected, "{kind:?}");
+        }
     }
 
     #[test]

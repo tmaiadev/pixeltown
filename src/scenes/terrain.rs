@@ -8,11 +8,12 @@ use super::{gameplay::GameplayScene, Scene};
 use crate::input::{Action, Device, Input};
 use crate::map::{autotile, rng::Rng, Map, TerrainType, MAP_SIZE};
 use crate::utils::animation::Animation;
+use crate::utils::assets::load_font;
 use crate::utils::frame_animation::FrameAnimation;
 use crate::utils::spritesheet::Spritesheet;
 use crate::{internal_width, set_internal_camera, INTERNAL_HEIGHT};
 use camera::{Camera, Motion, TILE_SIZE};
-use dock::DockView;
+use dock::{DockButton, DockView};
 
 const FADE_IN: f32 = 1.0;
 const FADE_OUT: f32 = 0.8;
@@ -48,11 +49,6 @@ pub struct TerrainScene {
 
 impl TerrainScene {
     pub fn new() -> Self {
-        let mut font =
-            load_ttf_font_from_bytes(include_bytes!("../../assets/fonts/PressStart2P.ttf"))
-                .expect("valid font");
-        font.set_filter(FilterMode::Nearest);
-
         let sheet = Spritesheet::from_png(
             include_bytes!("../../assets/sprites/terrain.png"),
             TILE_SIZE,
@@ -64,7 +60,7 @@ impl TerrainScene {
         let cells = autotile::tile_cells(&map);
 
         Self {
-            font,
+            font: load_font(),
             sheet,
             water: FrameAnimation::new(autotile::WATER_FRAMES, WATER_FPS),
             map,
@@ -89,15 +85,15 @@ impl TerrainScene {
     }
 
     fn activate(&mut self, button: usize) {
-        match button {
-            dock::GENERATE => self.generate(),
-            dock::ACCEPT => {
+        match DockButton::at(button) {
+            DockButton::Terrain(kind) => {
+                self.selected = kind;
+                self.generate();
+            }
+            DockButton::Generate => self.generate(),
+            DockButton::Accept => {
                 self.phase = Phase::FadingOut;
                 self.fade_out.start();
-            }
-            i => {
-                self.selected = TerrainType::ALL[i];
-                self.generate();
             }
         }
     }
@@ -126,40 +122,21 @@ impl TerrainScene {
     }
 
     fn draw_map(&self, viewport: Vec2) {
-        let zoom = self.camera.zoom();
-        set_camera(&Camera2D {
-            zoom: vec2(2.0 * zoom / viewport.x, 2.0 * zoom / viewport.y),
-            target: self.camera.view_center(),
-            ..Default::default()
-        });
+        set_camera(&self.camera.camera_2d(viewport));
 
-        let (x0, y0, x1, y1) = self.camera.visible_tiles(viewport);
+        let visible = self.camera.visible_tiles(viewport);
+        let (x0, y0, x1, y1) = visible;
         let frame = self.water.frame();
         for y in y0..y1 {
             for x in x0..x1 {
                 let tile = self.cells[y * MAP_SIZE + x];
                 let (col, row) = autotile::animated_cell(tile, frame, x + y);
-                self.sheet.draw_tile(
-                    col as usize,
-                    row as usize,
-                    x as f32 * TILE_SIZE,
-                    y as f32 * TILE_SIZE,
-                );
+                self.sheet.draw_tile(col, row, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
             }
         }
 
         if self.grid_visible {
-            let thickness = 1.0 / zoom;
-            let (left, right) = (x0 as f32 * TILE_SIZE, x1 as f32 * TILE_SIZE);
-            let (top, bottom) = (y0 as f32 * TILE_SIZE, y1 as f32 * TILE_SIZE);
-            for x in x0..=x1 {
-                let px = x as f32 * TILE_SIZE;
-                draw_line(px, top, px, bottom, thickness, GRID_COLOR);
-            }
-            for y in y0..=y1 {
-                let py = y as f32 * TILE_SIZE;
-                draw_line(left, py, right, py, thickness, GRID_COLOR);
-            }
+            draw_grid(visible, self.camera.zoom());
         }
     }
 
@@ -179,6 +156,20 @@ impl TerrainScene {
             alpha,
         };
         dock::draw(&dock, &view);
+    }
+}
+
+fn draw_grid((x0, y0, x1, y1): (usize, usize, usize, usize), zoom: f32) {
+    let thickness = 1.0 / zoom;
+    let (left, right) = (x0 as f32 * TILE_SIZE, x1 as f32 * TILE_SIZE);
+    let (top, bottom) = (y0 as f32 * TILE_SIZE, y1 as f32 * TILE_SIZE);
+    for x in x0..=x1 {
+        let px = x as f32 * TILE_SIZE;
+        draw_line(px, top, px, bottom, thickness, GRID_COLOR);
+    }
+    for y in y0..=y1 {
+        let py = y as f32 * TILE_SIZE;
+        draw_line(left, py, right, py, thickness, GRID_COLOR);
     }
 }
 

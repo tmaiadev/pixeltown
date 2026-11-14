@@ -1,5 +1,7 @@
 use macroquad::prelude::*;
 
+use super::assets::load_texture;
+
 pub struct Spritesheet {
     texture: Texture2D,
     tile_size: f32,
@@ -7,9 +9,10 @@ pub struct Spritesheet {
 
 impl Spritesheet {
     pub fn from_png(bytes: &[u8], tile_size: f32) -> Self {
-        let texture = Texture2D::from_file_with_format(bytes, Some(ImageFormat::Png));
-        texture.set_filter(FilterMode::Nearest);
-        Self { texture, tile_size }
+        Self {
+            texture: load_texture(bytes),
+            tile_size,
+        }
     }
 
     pub fn source(tile_size: f32, col: usize, row: usize) -> Rect {

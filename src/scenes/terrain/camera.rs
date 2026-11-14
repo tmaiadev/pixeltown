@@ -57,6 +57,14 @@ impl Camera {
         self.center = clamp_center(self.center, viewport / self.zoom);
     }
 
+    pub fn camera_2d(&self, viewport: Vec2) -> Camera2D {
+        Camera2D {
+            zoom: 2.0 * self.zoom / viewport,
+            target: self.view_center(),
+            ..Default::default()
+        }
+    }
+
     pub fn view_center(&self) -> Vec2 {
         (self.center * self.zoom).round() / self.zoom
     }

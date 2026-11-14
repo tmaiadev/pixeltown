@@ -29,17 +29,25 @@ pub enum Action {
     Cancel,
 }
 
-const ACTION_COUNT: usize = 6;
+impl Action {
+    pub const ALL: [Action; 6] = [
+        Action::Up,
+        Action::Down,
+        Action::Left,
+        Action::Right,
+        Action::Confirm,
+        Action::Cancel,
+    ];
+}
 
-pub struct Input {
-    gamepads: Gamepads,
-    gestures: Gestures,
-    last_device: Device,
+const ACTION_COUNT: usize = Action::ALL.len();
+
+#[derive(Default)]
+struct Frame {
     actions: [bool; ACTION_COUNT],
     nav_actions: [bool; ACTION_COUNT],
     any_pressed: bool,
     pointer: Option<Vec2>,
-    last_mouse: Vec2,
     pointer_moved: bool,
     pointer_clicked: bool,
     pan: Vec2,
@@ -49,119 +57,133 @@ pub struct Input {
     grid_toggled: bool,
 }
 
+pub struct Input {
+    gamepads: Gamepads,
+    gestures: Gestures,
+    last_device: Device,
+    last_mouse: Vec2,
+    frame: Frame,
+}
+
 impl Input {
     pub fn new() -> Self {
         Self {
             gamepads: Gamepads::new(),
             gestures: Gestures::default(),
             last_device: Device::KeyboardMouse,
-            actions: [false; ACTION_COUNT],
-            nav_actions: [false; ACTION_COUNT],
-            any_pressed: false,
-            pointer: None,
             last_mouse: internal_mouse_position(),
-            pointer_moved: false,
-            pointer_clicked: false,
-            pan: Vec2::ZERO,
-            drag: Vec2::ZERO,
-            zoom_step: 0,
-            zoom_delta: 0.0,
-            grid_toggled: false,
+            frame: Frame::default(),
         }
     }
 
     pub fn update(&mut self) {
-        self.actions = [false; ACTION_COUNT];
-        self.nav_actions = [false; ACTION_COUNT];
-        self.any_pressed = false;
-        self.pointer_moved = false;
-        self.pointer_clicked = false;
-        self.pan = Vec2::ZERO;
-        self.drag = Vec2::ZERO;
-        self.zoom_step = 0;
-        self.zoom_delta = 0.0;
-        self.grid_toggled = keyboard::grid_toggled();
+        self.frame = Frame::default();
 
-        let mouse = internal_mouse_position();
-        self.pointer = Some(mouse);
-        if mouse != self.last_mouse {
-            if is_mouse_button_down(MouseButton::Right) {
-                self.drag = mouse - self.last_mouse;
-            }
-            self.last_mouse = mouse;
-            self.pointer_moved = true;
+        let mouse_used = self.poll_mouse();
+        let keyboard_used = self.poll_keyboard();
+        if mouse_used || keyboard_used {
             self.last_device = Device::KeyboardMouse;
         }
-        if is_mouse_button_pressed(MouseButton::Left) {
-            self.pointer_clicked = true;
-            self.any_pressed = true;
-            self.last_device = Device::KeyboardMouse;
-        }
-
-        let (_, wheel) = mouse_wheel();
-        if wheel != 0.0 {
-            self.zoom_delta += wheel.clamp(-WHEEL_LIMIT, WHEEL_LIMIT) * WHEEL_SENSITIVITY;
-            self.last_device = Device::KeyboardMouse;
-        }
-
-        let key_pan = keyboard::pan();
-        if key_pan != Vec2::ZERO {
-            self.pan += key_pan;
-            self.last_device = Device::KeyboardMouse;
-        }
-        let key_zoom = keyboard::zoom_step();
-        if key_zoom != 0 {
-            self.zoom_step += key_zoom;
-            self.last_device = Device::KeyboardMouse;
-        }
-
-        for action in keyboard::pressed_nav_actions() {
-            self.press(action, true);
-            self.last_device = Device::KeyboardMouse;
-        }
-        for action in keyboard::pressed_wasd_actions() {
-            self.press(action, false);
-            self.last_device = Device::KeyboardMouse;
-        }
-        if keyboard::any_key_pressed() {
-            self.any_pressed = true;
-            self.last_device = Device::KeyboardMouse;
-        }
-
-        if let Some(tap) = touch::tap_position() {
-            self.pointer = Some(tap);
-            self.pointer_clicked = true;
-            self.any_pressed = true;
+        if self.poll_touch() {
             self.last_device = Device::Touch;
         }
-
-        if let Some(gesture) = self.gestures.poll() {
-            self.drag += gesture.drag;
-            self.zoom_delta += gesture.zoom;
-            self.last_device = Device::Touch;
-        }
-
-        let pad = self.gamepads.poll();
-        self.pan += pad.pan;
-        self.zoom_step += pad.zoom_step;
-        self.pan = self.pan.clamp_length_max(1.0);
-        for action in pad.actions {
-            self.press(action, true);
-        }
-        if pad.any_pressed {
-            self.any_pressed = true;
-        }
-        if let Some(kind) = pad.active {
+        if let Some(kind) = self.poll_gamepads() {
             self.last_device = Device::Gamepad(kind);
         }
     }
 
-    fn press(&mut self, action: Action, nav: bool) {
-        self.actions[action as usize] = true;
-        if nav {
-            self.nav_actions[action as usize] = true;
+    fn poll_mouse(&mut self) -> bool {
+        let mut used = false;
+        let mouse = internal_mouse_position();
+        self.frame.pointer = Some(mouse);
+        if mouse != self.last_mouse {
+            if is_mouse_button_down(MouseButton::Right) {
+                self.frame.drag = mouse - self.last_mouse;
+            }
+            self.last_mouse = mouse;
+            self.frame.pointer_moved = true;
+            used = true;
         }
-        self.any_pressed = true;
+        if is_mouse_button_pressed(MouseButton::Left) {
+            self.frame.pointer_clicked = true;
+            self.frame.any_pressed = true;
+            used = true;
+        }
+        let (_, wheel) = mouse_wheel();
+        if wheel != 0.0 {
+            self.frame.zoom_delta += wheel.clamp(-WHEEL_LIMIT, WHEEL_LIMIT) * WHEEL_SENSITIVITY;
+            used = true;
+        }
+        used
+    }
+
+    fn poll_keyboard(&mut self) -> bool {
+        let mut used = false;
+        self.frame.grid_toggled = keyboard::grid_toggled();
+
+        let pan = keyboard::pan();
+        if pan != Vec2::ZERO {
+            self.frame.pan += pan;
+            used = true;
+        }
+        let zoom = keyboard::zoom_step();
+        if zoom != 0 {
+            self.frame.zoom_step += zoom;
+            used = true;
+        }
+        for action in keyboard::pressed_nav_actions() {
+            self.press_nav(action);
+            used = true;
+        }
+        for action in keyboard::pressed_wasd_actions() {
+            self.press(action);
+            used = true;
+        }
+        if keyboard::any_key_pressed() {
+            self.frame.any_pressed = true;
+            used = true;
+        }
+        used
+    }
+
+    fn poll_touch(&mut self) -> bool {
+        let mut used = false;
+        if let Some(tap) = touch::tap_position() {
+            self.frame.pointer = Some(tap);
+            self.frame.pointer_clicked = true;
+            self.frame.any_pressed = true;
+            used = true;
+        }
+        if let Some(gesture) = self.gestures.poll() {
+            self.frame.drag += gesture.drag;
+            self.frame.zoom_delta += gesture.zoom;
+            used = true;
+        }
+        used
+    }
+
+    fn poll_gamepads(&mut self) -> Option<GamepadKind> {
+        let pad = self.gamepads.poll();
+        self.frame.pan = (self.frame.pan + pad.pan).clamp_length_max(1.0);
+        self.frame.zoom_step += pad.zoom_step;
+        for action in pad.actions {
+            self.press_nav(action);
+        }
+        if pad.any_pressed {
+            self.frame.any_pressed = true;
+        }
+        pad.active
+    }
+
+    // WASD also pans the terrain camera, so it must not move UI focus there.
+    fn press(&mut self, action: Action) {
+        self.frame.actions[action as usize] = true;
+        self.frame.any_pressed = true;
+    }
+
+    fn press_nav(&mut self, action: Action) {
+        self.press(action);
+        self.frame.nav_actions[action as usize] = true;
     }
 
     pub fn last_device(&self) -> Device {
@@ -169,53 +191,56 @@ impl Input {
     }
 
     pub fn pressed(&self, action: Action) -> bool {
-        self.actions[action as usize]
+        self.frame.actions[action as usize]
     }
 
     pub fn pressed_nav(&self, action: Action) -> bool {
-        self.nav_actions[action as usize]
+        self.frame.nav_actions[action as usize]
     }
 
     pub fn any_pressed(&self) -> bool {
-        self.any_pressed
+        self.frame.any_pressed
     }
 
     pub fn pointer(&self) -> Option<Vec2> {
-        self.pointer
+        self.frame.pointer
     }
 
     pub fn pointer_moved(&self) -> bool {
-        self.pointer_moved
+        self.frame.pointer_moved
     }
 
     pub fn pointer_clicked(&self) -> bool {
-        self.pointer_clicked
+        self.frame.pointer_clicked
     }
 
     pub fn pan(&self) -> Vec2 {
-        self.pan
+        self.frame.pan
     }
 
     pub fn drag(&self) -> Vec2 {
-        self.drag
+        self.frame.drag
     }
 
     pub fn zoom_step(&self) -> i32 {
-        self.zoom_step.clamp(-1, 1)
+        self.frame.zoom_step.clamp(-1, 1)
     }
 
     pub fn zoom_delta(&self) -> f32 {
-        self.zoom_delta
+        self.frame.zoom_delta
     }
 
     pub fn grid_toggled(&self) -> bool {
-        self.grid_toggled
+        self.frame.grid_toggled
     }
 }
 
+fn to_internal(screen: Vec2) -> Vec2 {
+    screen * (INTERNAL_HEIGHT / screen_height())
+}
+
 fn internal_mouse_position() -> Vec2 {
-    let (x, y) = mouse_position();
-    vec2(x, y) * (INTERNAL_HEIGHT / screen_height())
+    to_internal(mouse_position().into())
 }
 
 #[cfg(test)]
@@ -223,16 +248,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn action_indices_fit_in_state_array() {
-        for action in [
-            Action::Up,
-            Action::Down,
-            Action::Left,
-            Action::Right,
-            Action::Confirm,
-            Action::Cancel,
-        ] {
-            assert!((action as usize) < ACTION_COUNT);
+    fn action_discriminants_match_their_index_in_all() {
+        for (i, action) in Action::ALL.into_iter().enumerate() {
+            assert_eq!(action as usize, i);
         }
     }
 }

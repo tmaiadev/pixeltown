@@ -63,11 +63,14 @@ const BLOB_INDEX: [u8; 256] = {
     table
 };
 
+const _: () = assert!(SHORE_START + BLOB_COUNT <= GRASS_EDGE_START);
+
 fn neighbor_mask(map: &Map, x: usize, y: usize, other: Terrain) -> u8 {
+    let own = map.get(x, y);
     let (x, y) = (x as i32, y as i32);
     let mut mask = 0;
     for (dx, dy, bit) in CARDINALS.into_iter().chain(DIAGONALS) {
-        if map.get_or(x + dx, y + dy, map.get(x as usize, y as usize)) == other {
+        if map.get_or(x + dx, y + dy, own) == other {
             mask |= bit;
         }
     }
@@ -103,6 +106,15 @@ pub struct Tile {
     animated: bool,
 }
 
+impl Tile {
+    fn new((col, row): (usize, usize), animated: bool) -> Self {
+        Self {
+            cell: (col as u8, row as u8),
+            animated,
+        }
+    }
+}
+
 fn is_animated(map: &Map, x: usize, y: usize) -> bool {
     match map.get(x, y) {
         Terrain::Water => true,
@@ -120,7 +132,7 @@ fn is_animated(map: &Map, x: usize, y: usize) -> bool {
 }
 
 // `phase` desyncs open water between tiles; shores always follow the global frame.
-pub fn animated_cell(tile: Tile, frame: usize, phase: usize) -> (u8, u8) {
+pub fn animated_cell(tile: Tile, frame: usize, phase: usize) -> (usize, usize) {
     let (col, row) = (tile.cell.0 as usize, tile.cell.1 as usize);
     let open_water = row == 0 && (WATER_START..WATER_START + WATER_VARIANTS).contains(&col);
     let shore = (1..FRAME_ROWS).contains(&row);
@@ -133,18 +145,14 @@ pub fn animated_cell(tile: Tile, frame: usize, phase: usize) -> (u8, u8) {
         0 => row,
         f => FRAMES_START_ROW + (f - 1) * FRAME_ROWS + row,
     };
-    (col as u8, row as u8)
+    (col, row)
 }
 
 pub fn tile_cells(map: &Map) -> Vec<Tile> {
     let mut tiles = Vec::with_capacity(MAP_SIZE * MAP_SIZE);
     for y in 0..MAP_SIZE {
         for x in 0..MAP_SIZE {
-            let (col, row) = tile_cell(map, x, y);
-            tiles.push(Tile {
-                cell: (col as u8, row as u8),
-                animated: is_animated(map, x, y),
-            });
+            tiles.push(Tile::new(tile_cell(map, x, y), is_animated(map, x, y)));
         }
     }
     tiles
@@ -153,14 +161,15 @@ pub fn tile_cells(map: &Map) -> Vec<Tile> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::map::idx;
 
     fn map_from(rows: &[&str]) -> Map {
         let mut tiles = vec![Terrain::Grass; MAP_SIZE * MAP_SIZE];
         let mut river = vec![false; MAP_SIZE * MAP_SIZE];
         for (y, row) in rows.iter().enumerate() {
             for (x, c) in row.chars().enumerate() {
-                river[y * MAP_SIZE + x] = c == 'r';
-                tiles[y * MAP_SIZE + x] = match c {
+                river[idx(x, y)] = c == 'r';
+                tiles[idx(x, y)] = match c {
                     '~' | 'r' => Terrain::Water,
                     '.' => Terrain::Sand,
                     _ => Terrain::Grass,
@@ -177,11 +186,6 @@ mod tests {
         seen.dedup();
         assert_eq!(seen.len(), BLOB_COUNT);
         assert_eq!(*seen.last().unwrap() as usize, BLOB_COUNT - 1);
-    }
-
-    #[test]
-    fn blob_indices_fit_in_their_sheet_sections() {
-        assert!(SHORE_START + BLOB_COUNT <= GRASS_EDGE_START);
     }
 
     #[test]
@@ -224,13 +228,13 @@ mod tests {
         assert!((WATER_START..WATER_START + WATER_VARIANTS).contains(&col));
     }
 
-    fn tile(cell: (u8, u8)) -> Tile {
-        Tile { cell, animated: true }
+    fn tile(cell: (usize, usize)) -> Tile {
+        Tile::new(cell, true)
     }
 
     #[test]
     fn frame_zero_keeps_the_original_cell() {
-        let water = (WATER_START as u8, 0);
+        let water = (WATER_START, 0);
         let shore = (3, 2);
         assert_eq!(animated_cell(tile(water), 0, 0), water);
         assert_eq!(animated_cell(tile(shore), 0, 0), shore);
@@ -238,7 +242,7 @@ mod tests {
 
     #[test]
     fn static_cells_never_animate() {
-        for cell in [(0, 0), (SAND_START as u8, 0), (2, 4), (5, 6)] {
+        for cell in [(0, 0), (SAND_START, 0), (2, 4), (5, 6)] {
             for frame in 0..WATER_FRAMES {
                 assert_eq!(animated_cell(tile(cell), frame, 3), cell);
             }
@@ -250,10 +254,10 @@ mod tests {
         let sheet_rows = FRAMES_START_ROW + (WATER_FRAMES - 1) * FRAME_ROWS;
         for frame in 0..WATER_FRAMES {
             for phase in 0..WATER_FRAMES {
-                for col in 0..SHEET_COLUMNS as u8 {
+                for col in 0..SHEET_COLUMNS {
                     for row in 0..4 {
                         let (_, r) = animated_cell(tile((col, row)), frame, phase);
-                        assert!((r as usize) < sheet_rows);
+                        assert!(r < sheet_rows);
                     }
                 }
             }
@@ -262,7 +266,7 @@ mod tests {
 
     #[test]
     fn phase_offsets_open_water_but_not_shores() {
-        let water = tile((WATER_START as u8, 0));
+        let water = tile((WATER_START, 0));
         let shore = tile((3, 2));
         assert_ne!(animated_cell(water, 0, 1), animated_cell(water, 0, 0));
         assert_eq!(animated_cell(shore, 1, 0), animated_cell(shore, 1, 2));
@@ -270,7 +274,7 @@ mod tests {
 
     #[test]
     fn tiles_flagged_static_ignore_the_frame() {
-        let shore = Tile { cell: (3, 2), animated: false };
+        let shore = Tile::new((3, 2), false);
         assert_eq!(animated_cell(shore, 2, 1), (3, 2));
     }
 

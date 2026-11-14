@@ -6,7 +6,6 @@ pub struct Animation {
     looping: bool,
 }
 
-#[allow(dead_code)]
 impl Animation {
     pub fn new(duration: f32) -> Self {
         Self {
@@ -32,6 +31,7 @@ impl Animation {
         self.started = true;
     }
 
+    #[allow(dead_code)]
     pub fn reset(&mut self) {
         self.elapsed = 0.0;
         self.ended = false;
@@ -66,6 +66,7 @@ impl Animation {
         self.elapsed
     }
 
+    #[allow(dead_code)]
     pub fn duration(&self) -> f32 {
         self.duration
     }

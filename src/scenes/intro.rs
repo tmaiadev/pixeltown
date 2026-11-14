@@ -2,8 +2,10 @@ use macroquad::prelude::*;
 
 use super::{menu::MenuScene, Scene};
 use crate::input::Input;
+use crate::ui::image::draw_texture_scaled;
 use crate::ui::text::draw_text_centered;
 use crate::utils::animation::Animation;
+use crate::utils::assets::{load_font, load_logo};
 use crate::{internal_width, INTERNAL_HEIGHT};
 
 const LOGO_SCALE: f32 = 2.0;
@@ -32,31 +34,20 @@ fn fade_alpha(elapsed: f32, fade_in: f32, hold: f32, fade_out: f32) -> f32 {
 pub struct IntroScene {
     font: Font,
     logo: Texture2D,
-    presents: Animation,
-    logo_anim: Animation,
+    presents_fade: Animation,
+    logo_fade: Animation,
 }
 
 impl IntroScene {
     pub fn new() -> Self {
-        let mut font =
-            load_ttf_font_from_bytes(include_bytes!("../../assets/fonts/PressStart2P.ttf"))
-                .expect("valid font");
-        font.set_filter(FilterMode::Nearest);
-
-        let logo = Texture2D::from_file_with_format(
-            include_bytes!("../../assets/sprites/logo.png"),
-            Some(ImageFormat::Png),
-        );
-        logo.set_filter(FilterMode::Nearest);
-
         Self {
-            font,
-            logo,
-            presents: Animation::new(
+            font: load_font(),
+            logo: load_logo(),
+            presents_fade: Animation::new(
                 PRESENTS_FADE_IN + PRESENTS_HOLD + PRESENTS_FADE_OUT + PRESENTS_WAIT,
             )
             .autostart(),
-            logo_anim: Animation::new(LOGO_FADE_IN + LOGO_HOLD + LOGO_FADE_OUT).autostart(),
+            logo_fade: Animation::new(LOGO_FADE_IN + LOGO_HOLD + LOGO_FADE_OUT).autostart(),
         }
     }
 }
@@ -65,13 +56,13 @@ impl Scene for IntroScene {
     fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
         let dt = get_frame_time();
 
-        if !self.presents.has_ended() {
-            self.presents.update(dt);
+        if !self.presents_fade.has_ended() {
+            self.presents_fade.update(dt);
         } else {
-            self.logo_anim.update(dt);
+            self.logo_fade.update(dt);
         }
 
-        if input.any_pressed() || self.logo_anim.has_ended() {
+        if input.any_pressed() || self.logo_fade.has_ended() {
             return Some(Box::new(MenuScene::new()));
         }
         None
@@ -81,9 +72,9 @@ impl Scene for IntroScene {
         clear_background(BLACK);
         let center = vec2(internal_width() / 2.0, INTERNAL_HEIGHT / 2.0);
 
-        if !self.presents.has_ended() {
+        if !self.presents_fade.has_ended() {
             let alpha = fade_alpha(
-                self.presents.elapsed(),
+                self.presents_fade.elapsed(),
                 PRESENTS_FADE_IN,
                 PRESENTS_HOLD,
                 PRESENTS_FADE_OUT,
@@ -97,22 +88,13 @@ impl Scene for IntroScene {
             );
         } else {
             let alpha = fade_alpha(
-                self.logo_anim.elapsed(),
+                self.logo_fade.elapsed(),
                 LOGO_FADE_IN,
                 LOGO_HOLD,
                 LOGO_FADE_OUT,
             );
-            let size = self.logo.size() * LOGO_SCALE;
-            draw_texture_ex(
-                &self.logo,
-                (center.x - size.x / 2.0).round(),
-                (center.y - size.y / 2.0).round(),
-                Color::new(1.0, 1.0, 1.0, alpha),
-                DrawTextureParams {
-                    dest_size: Some(size),
-                    ..Default::default()
-                },
-            );
+            let top_left = (center - self.logo.size() * LOGO_SCALE / 2.0).round();
+            draw_texture_scaled(&self.logo, top_left, LOGO_SCALE, Color::new(1.0, 1.0, 1.0, alpha));
         }
     }
 }

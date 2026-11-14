@@ -41,8 +41,8 @@ pub struct Poll {
 
 pub struct Gamepads {
     gilrs: Option<Gilrs>,
-    stick_action: Option<Action>,
     stick_x_action: Option<Action>,
+    stick_y_action: Option<Action>,
     right_stick: Vec2,
 }
 
@@ -50,8 +50,8 @@ impl Gamepads {
     pub fn new() -> Self {
         Self {
             gilrs: Gilrs::new().ok(),
-            stick_action: None,
             stick_x_action: None,
+            stick_y_action: None,
             right_stick: Vec2::ZERO,
         }
     }
@@ -71,36 +71,42 @@ impl Gamepads {
                     poll.actions.extend(button_action(button));
                     poll.zoom_step += button_zoom(button);
                 }
-                EventType::AxisChanged(Axis::LeftStickY, value, _) => {
-                    let action = stick_action(value);
-                    if action.is_some() && action != self.stick_action {
-                        poll.active = Some(kind);
-                        poll.actions.extend(action);
-                    }
-                    self.stick_action = action;
-                }
                 EventType::AxisChanged(Axis::LeftStickX, value, _) => {
-                    let action = stick_x_action(value);
-                    if action.is_some() && action != self.stick_x_action {
-                        poll.active = Some(kind);
-                        poll.actions.extend(action);
-                    }
-                    self.stick_x_action = action;
+                    poll.stick_moved(&mut self.stick_x_action, stick_x_action(value), kind);
                 }
-                EventType::AxisChanged(axis @ (Axis::RightStickX | Axis::RightStickY), value, _) => {
-                    match axis {
-                        Axis::RightStickX => self.right_stick.x = value,
-                        _ => self.right_stick.y = -value,
-                    }
-                    if apply_deadzone(self.right_stick) != Vec2::ZERO {
-                        poll.active = Some(kind);
-                    }
+                EventType::AxisChanged(Axis::LeftStickY, value, _) => {
+                    poll.stick_moved(&mut self.stick_y_action, stick_y_action(value), kind);
+                }
+                EventType::AxisChanged(Axis::RightStickX, value, _) => {
+                    self.right_stick.x = value;
+                    poll.right_stick_moved(self.right_stick, kind);
+                }
+                EventType::AxisChanged(Axis::RightStickY, value, _) => {
+                    self.right_stick.y = -value;
+                    poll.right_stick_moved(self.right_stick, kind);
                 }
                 _ => {}
             }
         }
         poll.pan = apply_deadzone(self.right_stick);
         poll
+    }
+}
+
+impl Poll {
+    // Fires once when the stick crosses the threshold, not every frame it is held.
+    fn stick_moved(&mut self, held: &mut Option<Action>, action: Option<Action>, kind: GamepadKind) {
+        if action.is_some() && action != *held {
+            self.active = Some(kind);
+            self.actions.extend(action);
+        }
+        *held = action;
+    }
+
+    fn right_stick_moved(&mut self, stick: Vec2, kind: GamepadKind) {
+        if apply_deadzone(stick) != Vec2::ZERO {
+            self.active = Some(kind);
+        }
     }
 }
 
@@ -129,35 +135,26 @@ fn button_zoom(button: Button) -> i32 {
 }
 
 fn stick_x_action(value: f32) -> Option<Action> {
+    stick_direction(value, Action::Right, Action::Left)
+}
+
+fn stick_y_action(value: f32) -> Option<Action> {
+    stick_direction(value, Action::Up, Action::Down)
+}
+
+fn stick_direction(value: f32, positive: Action, negative: Action) -> Option<Action> {
     if value > STICK_THRESHOLD {
-        Some(Action::Right)
+        Some(positive)
     } else if value < -STICK_THRESHOLD {
-        Some(Action::Left)
+        Some(negative)
     } else {
         None
     }
 }
 
 fn apply_deadzone(stick: Vec2) -> Vec2 {
+    let dead = |value: f32| if value.abs() < PAN_DEADZONE { 0.0 } else { value };
     vec2(dead(stick.x), dead(stick.y))
-}
-
-fn dead(value: f32) -> f32 {
-    if value.abs() < PAN_DEADZONE {
-        0.0
-    } else {
-        value
-    }
-}
-
-fn stick_action(value: f32) -> Option<Action> {
-    if value > STICK_THRESHOLD {
-        Some(Action::Up)
-    } else if value < -STICK_THRESHOLD {
-        Some(Action::Down)
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]
@@ -186,9 +183,9 @@ mod tests {
         assert_eq!(button_action(Button::DPadUp), Some(Action::Up));
         assert_eq!(button_action(Button::South), Some(Action::Confirm));
         assert_eq!(button_action(Button::North), None);
-        assert_eq!(stick_action(0.9), Some(Action::Up));
-        assert_eq!(stick_action(-0.9), Some(Action::Down));
-        assert_eq!(stick_action(0.1), None);
+        assert_eq!(stick_y_action(0.9), Some(Action::Up));
+        assert_eq!(stick_y_action(-0.9), Some(Action::Down));
+        assert_eq!(stick_y_action(0.1), None);
     }
 
     #[test]

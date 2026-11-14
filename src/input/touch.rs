@@ -1,10 +1,6 @@
 use macroquad::prelude::*;
 
-use crate::INTERNAL_HEIGHT;
-
-fn to_internal(position: Vec2) -> Vec2 {
-    position * (INTERNAL_HEIGHT / screen_height())
-}
+use super::to_internal;
 
 pub fn tap_position() -> Option<Vec2> {
     touches()
