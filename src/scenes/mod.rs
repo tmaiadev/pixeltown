@@ -8,5 +8,5 @@ pub mod terrain;
 
 pub trait Scene {
     fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>>;
-    fn draw(&self);
+    fn draw(&self, input: &Input);
 }

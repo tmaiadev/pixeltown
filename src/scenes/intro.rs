@@ -68,7 +68,7 @@ impl Scene for IntroScene {
         None
     }
 
-    fn draw(&self) {
+    fn draw(&self, _input: &Input) {
         clear_background(BLACK);
         let center = vec2(internal_width() / 2.0, INTERNAL_HEIGHT / 2.0);
 

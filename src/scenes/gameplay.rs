@@ -64,7 +64,7 @@ impl Scene for GameplayScene {
         None
     }
 
-    fn draw(&self) {
+    fn draw(&self, _input: &Input) {
         clear_background(BLACK);
         let viewport = screen::viewport();
         self.view.draw(&self.camera, viewport, false);

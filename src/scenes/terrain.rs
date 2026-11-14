@@ -45,8 +45,6 @@ pub struct TerrainScene {
     fade_out: Animation,
     focus: usize,
     focus_visible: bool,
-    device: Device,
-    pointer: Option<Vec2>,
     grid_visible: bool,
 }
 
@@ -73,8 +71,6 @@ impl TerrainScene {
             fade_out: Animation::new(FADE_OUT),
             focus: dock::GENERATE,
             focus_visible: false,
-            device: Device::KeyboardMouse,
-            pointer: None,
             grid_visible: false,
         }
     }
@@ -145,11 +141,11 @@ impl TerrainScene {
         }
     }
 
-    fn draw_ui(&self, viewport: Vec2, alpha: f32) {
+    fn draw_ui(&self, input: &Input, viewport: Vec2, alpha: f32) {
         let dock = dock::layout(viewport.x, viewport.y);
-        let hovered = match self.device {
+        let hovered = match input.last_device() {
             Device::KeyboardMouse if !self.focus_visible => {
-                self.pointer.and_then(|p| dock.button_at(p))
+                input.pointer().and_then(|p| dock.button_at(p))
             }
             _ => None,
         };
@@ -172,8 +168,6 @@ impl Scene for TerrainScene {
     fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
         let dt = get_frame_time();
         let viewport = screen::viewport();
-        self.device = input.last_device();
-        self.pointer = input.pointer();
 
         match self.phase {
             Phase::FadingIn => {
@@ -218,7 +212,7 @@ impl Scene for TerrainScene {
         None
     }
 
-    fn draw(&self) {
+    fn draw(&self, input: &Input) {
         clear_background(BLACK);
         let viewport = screen::viewport();
         self.view.draw(&self.camera, viewport, self.grid_visible);
@@ -229,7 +223,7 @@ impl Scene for TerrainScene {
             _ => 1.0,
         };
         if ui_alpha > 0.0 {
-            self.draw_ui(viewport, ui_alpha);
+            self.draw_ui(input, viewport, ui_alpha);
         }
 
         if self.phase == Phase::FadingIn {

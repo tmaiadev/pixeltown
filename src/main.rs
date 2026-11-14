@@ -36,7 +36,7 @@ async fn main() {
         if let Some(next) = scene.update(&input) {
             scene = next;
         }
-        scene.draw();
+        scene.draw(&input);
         if let Some(font) = &fps_font {
             set_internal_camera();
             ui::fps::draw_fps(font);

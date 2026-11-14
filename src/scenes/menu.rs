@@ -136,7 +136,7 @@ impl Scene for MenuScene {
         None
     }
 
-    fn draw(&self) {
+    fn draw(&self, _input: &Input) {
         clear_background(BLACK);
         let center_x = internal_width() / 2.0;
         let alpha = self.fade_in.progress() * (1.0 - self.fade_out.progress());

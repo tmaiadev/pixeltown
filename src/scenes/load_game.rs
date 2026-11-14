@@ -63,8 +63,6 @@ pub struct LoadGameScene {
     focus_visible: bool,
     deleting: bool,
     confirm: Option<DialogButton>,
-    device: Device,
-    pointer: Option<Vec2>,
     error: Option<&'static str>,
     fade_in: Animation,
     fade_out: Animation,
@@ -85,8 +83,6 @@ impl LoadGameScene {
             focus_visible: false,
             deleting: false,
             confirm: None,
-            device: Device::KeyboardMouse,
-            pointer: None,
             error: None,
             fade_in: Animation::new(FADE_IN).autostart(),
             fade_out: Animation::new(FADE_OUT),
@@ -162,8 +158,8 @@ impl LoadGameScene {
         self.scroll.round() as usize
     }
 
-    fn hovered_row(&self, layout: &Layout) -> Option<usize> {
-        let slot = self.pointer.and_then(|p| layout.slot_at(p))?;
+    fn hovered_row(&self, layout: &Layout, pointer: Option<Vec2>) -> Option<usize> {
+        let slot = pointer.and_then(|p| layout.slot_at(p))?;
         Some(self.first_row() + slot).filter(|&i| i < self.rows.len())
     }
 
@@ -220,7 +216,7 @@ impl LoadGameScene {
         } else if input.pressed(Action::Confirm) {
             self.activate(self.focus);
         } else if input.pointer_clicked() {
-            if let Some(i) = self.hovered_row(layout) {
+            if let Some(i) = self.hovered_row(layout, input.pointer()) {
                 self.select(i, visible);
             } else if let Some(button) = input.pointer().and_then(|p| layout.button_at(p)) {
                 self.focus = button;
@@ -229,7 +225,7 @@ impl LoadGameScene {
         }
     }
 
-    fn draw_rows(&self, layout: &Layout, alpha: f32) {
+    fn draw_rows(&self, input: &Input, layout: &Layout, alpha: f32) {
         if self.rows.is_empty() {
             let text = with_alpha(TEXT, alpha);
             draw_text_centered(&self.font, "No saved games", layout.list.center(), LABEL_SIZE, text);
@@ -237,7 +233,7 @@ impl LoadGameScene {
         }
 
         let hovered = match self.confirm {
-            None if self.shows_hover() => self.hovered_row(layout),
+            None if self.shows_hover(input) => self.hovered_row(layout, input.pointer()),
             _ => None,
         };
         let rows = self.rows.iter().enumerate().skip(self.first_row());
@@ -273,13 +269,13 @@ impl LoadGameScene {
         draw_rectangle(track.x, thumb_y, track.w, thumb_h, with_alpha(SCROLL_THUMB, alpha));
     }
 
-    fn shows_hover(&self) -> bool {
-        self.device == Device::KeyboardMouse && !self.focus_visible
+    fn shows_hover(&self, input: &Input) -> bool {
+        input.last_device() == Device::KeyboardMouse && !self.focus_visible
     }
 
-    fn draw_buttons(&self, layout: &Layout, alpha: f32) {
+    fn draw_buttons(&self, input: &Input, layout: &Layout, alpha: f32) {
         let hovered = match self.confirm {
-            None if self.shows_hover() => self.pointer.and_then(|p| layout.button_at(p)),
+            None if self.shows_hover(input) => input.pointer().and_then(|p| layout.button_at(p)),
             _ => None,
         };
         let focused = |button| self.confirm.is_none() && self.focus_visible && self.focus == button;
@@ -317,7 +313,7 @@ impl LoadGameScene {
         }
     }
 
-    fn draw_dialog(&self, dialog: &Dialog, focus: DialogButton, alpha: f32) {
+    fn draw_dialog(&self, input: &Input, dialog: &Dialog, focus: DialogButton, alpha: f32) {
         draw_rectangle(0.0, 0.0, internal_width(), INTERNAL_HEIGHT, with_alpha(OVERLAY, alpha));
         draw_panel(dialog.panel, alpha);
 
@@ -330,7 +326,7 @@ impl LoadGameScene {
             draw_text_centered(&self.font, line, center, LABEL_SIZE, text);
         }
 
-        let hovered = self.pointer.filter(|_| self.shows_hover()).and_then(|p| dialog.button_at(p));
+        let hovered = input.pointer().filter(|_| self.shows_hover(input)).and_then(|p| dialog.button_at(p));
         for button in [DialogButton::Cancel, DialogButton::Delete] {
             let (label, fill) = match button {
                 DialogButton::Cancel => ("Cancel", None),
@@ -347,8 +343,6 @@ impl LoadGameScene {
 impl Scene for LoadGameScene {
     fn update(&mut self, input: &Input) -> Option<Box<dyn Scene>> {
         let dt = get_frame_time();
-        self.device = input.last_device();
-        self.pointer = input.pointer();
         self.fade_in.update(dt);
         if self.fade_out.has_started() {
             self.fade_out.update(dt);
@@ -370,7 +364,7 @@ impl Scene for LoadGameScene {
         None
     }
 
-    fn draw(&self) {
+    fn draw(&self, input: &Input) {
         clear_background(BLACK);
         let viewport = screen::viewport();
         let layout = layout::layout(viewport.x, viewport.y);
@@ -379,11 +373,11 @@ impl Scene for LoadGameScene {
         draw_panel(layout.panel, alpha);
         let title = with_alpha(TEXT, alpha);
         draw_text_centered(&self.font, "Load Game", layout.title, TITLE_SIZE, title);
-        self.draw_rows(&layout, alpha);
+        self.draw_rows(input, &layout, alpha);
         self.draw_scrollbar(&layout, alpha);
-        self.draw_buttons(&layout, alpha);
+        self.draw_buttons(input, &layout, alpha);
         if let Some(focus) = self.confirm {
-            self.draw_dialog(&layout::dialog(viewport.x, viewport.y), focus, alpha);
+            self.draw_dialog(input, &layout::dialog(viewport.x, viewport.y), focus, alpha);
         }
     }
 }
