@@ -167,7 +167,7 @@ fn height_field(seed: u64, height: impl Fn(usize, usize) -> f32) -> Vec<f32> {
 
 // Sinks land near the border so coasts curve away instead of being cut by the margin.
 fn edge_falloff(x: usize, y: usize, seed: u64) -> f32 {
-    let edge = x.min(y).min(MAP_SIZE - 1 - x).min(MAP_SIZE - 1 - y) - BORDER_MARGIN;
+    let edge = x.min(y).min(MAP_SIZE - 1 - x).min(MAP_SIZE - 1 - y).saturating_sub(BORDER_MARGIN);
     let wobble = fbm(x as f32 * 0.02, y as f32 * 0.02, seed ^ 0xED6E, 2);
     let width = EDGE_FALLOFF * (0.5 + wobble);
     let t = 1.0 - (edge as f32 / width).min(1.0);
