@@ -111,7 +111,7 @@ impl Input {
         }
         let (_, wheel) = mouse_wheel();
         if wheel != 0.0 {
-            self.frame.zoom_delta += wheel.clamp(-WHEEL_LIMIT, WHEEL_LIMIT) * WHEEL_SENSITIVITY;
+            self.frame.zoom_delta -= wheel.clamp(-WHEEL_LIMIT, WHEEL_LIMIT) * WHEEL_SENSITIVITY;
             used = true;
         }
         used
