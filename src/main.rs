@@ -1,3 +1,4 @@
+mod cli;
 mod input;
 mod map;
 mod scenes;
@@ -6,14 +7,15 @@ mod utils;
 
 use macroquad::prelude::*;
 use input::Input;
-use scenes::{intro::IntroScene, Scene};
+use cli::{Args, SceneName};
+use scenes::Scene;
 
 pub const INTERNAL_HEIGHT: f32 = 480.0;
 
 fn window_conf() -> Conf {
     Conf {
         window_title: "Pixeltown".to_owned(),
-        fullscreen: true,
+        fullscreen: !Args::from_env().windowed,
         window_resizable: true,
         high_dpi: true,
         ..Default::default()
@@ -35,7 +37,9 @@ pub fn set_internal_camera() {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut scene: Box<dyn Scene> = Box::new(IntroScene::new());
+    let args = Args::from_env();
+    let fps_font = args.show_fps.then(utils::assets::load_font);
+    let mut scene: Box<dyn Scene> = args.scene.unwrap_or(SceneName::Intro).build();
     let mut input = Input::new();
 
     loop {
@@ -45,6 +49,9 @@ async fn main() {
             scene = next;
         }
         scene.draw();
+        if let Some(font) = &fps_font {
+            ui::fps::draw_fps(font);
+        }
         next_frame().await;
     }
 }
