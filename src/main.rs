@@ -1,6 +1,7 @@
 mod cli;
 mod input;
 mod map;
+mod map_view;
 mod scenes;
 mod ui;
 mod utils;

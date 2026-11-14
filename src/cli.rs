@@ -25,7 +25,7 @@ impl SceneName {
             SceneName::Intro => Box::new(IntroScene::new()),
             SceneName::Menu => Box::new(MenuScene::new()),
             SceneName::Terrain => Box::new(TerrainScene::new()),
-            SceneName::Gameplay => Box::new(GameplayScene),
+            SceneName::Gameplay => Box::new(GameplayScene::resume()),
         }
     }
 

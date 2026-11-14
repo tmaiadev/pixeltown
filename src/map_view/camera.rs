@@ -10,6 +10,7 @@ const ZOOM_EPSILON: f32 = 1e-4;
 const ZOOM_SMOOTHING: f32 = 14.0;
 const PAN_SPEED: f32 = 600.0;
 const MAP_PIXELS: f32 = MAP_SIZE as f32 * TILE_SIZE;
+pub const MAP_CENTER: Vec2 = Vec2::new(MAP_PIXELS / 2.0, MAP_PIXELS / 2.0);
 
 #[derive(Clone, Copy, Default)]
 pub struct Motion {
@@ -35,8 +36,24 @@ impl Camera {
         }
     }
 
+    pub fn centered(zoom: f32, viewport: Vec2) -> Self {
+        let mut camera = Self::new(viewport);
+        camera.set_view(MAP_CENTER, zoom, viewport);
+        camera
+    }
+
     pub fn zoom(&self) -> f32 {
         self.zoom
+    }
+
+    pub fn view(&self) -> (Vec2, f32) {
+        (self.center, self.zoom)
+    }
+
+    pub fn set_view(&mut self, center: Vec2, zoom: f32, viewport: Vec2) {
+        self.zoom = zoom.clamp(min_zoom(viewport), MAX_ZOOM);
+        self.target_zoom = self.zoom;
+        self.center = clamp_center(center, viewport / self.zoom);
     }
 
     pub fn update(&mut self, dt: f32, viewport: Vec2, motion: Motion) {
@@ -85,6 +102,12 @@ impl Camera {
             to_tile(center.y + half.y, MAP_SIZE - 1) + 1,
         )
     }
+}
+
+// Zoom interpolates geometrically so the scale changes at a steady rate on screen.
+pub fn glide(from: (Vec2, f32), to: (Vec2, f32), t: f32) -> (Vec2, f32) {
+    let t = t * t * (3.0 - 2.0 * t);
+    (from.0.lerp(to.0, t), from.1 * (to.1 / from.1).powf(t))
 }
 
 fn min_zoom(viewport: Vec2) -> f32 {
@@ -199,6 +222,25 @@ mod tests {
             camera.update(0.016, VIEWPORT, Motion::default());
         }
         assert!((camera.zoom() - 1.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn centered_camera_sits_on_the_map_center_at_the_given_zoom() {
+        let camera = Camera::centered(1.0, VIEWPORT);
+        assert_eq!(camera.view(), (MAP_CENTER, 1.0));
+        assert_eq!(Camera::centered(0.0, VIEWPORT).zoom(), min_zoom(VIEWPORT));
+    }
+
+    #[test]
+    fn glide_eases_from_start_to_end() {
+        let from = (Vec2::ZERO, 0.25);
+        let to = (MAP_CENTER, 1.0);
+        assert_eq!(glide(from, to, 0.0), from);
+        let end = glide(from, to, 1.0);
+        assert!((end.0 - to.0).length() < 1e-3 && (end.1 - to.1).abs() < 1e-6);
+        let (center, zoom) = glide(from, to, 0.5);
+        assert_eq!(center, MAP_CENTER / 2.0);
+        assert!((zoom - 0.5).abs() < 1e-6);
     }
 
     #[test]

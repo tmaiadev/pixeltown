@@ -1,7 +1,9 @@
 pub mod autotile;
 pub mod rng;
+pub mod save;
 
 use rng::{fbm, Rng};
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 pub const MAP_SIZE: usize = 256;
@@ -44,7 +46,8 @@ pub enum Feature {
     Rock,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TerrainType {
     Inland,
     Island,
@@ -81,6 +84,8 @@ enum Side {
 const SIDES: [Side; 4] = [Side::North, Side::South, Side::West, Side::East];
 
 pub struct Map {
+    kind: TerrainType,
+    seed: u64,
     tiles: Vec<Terrain>,
     river: Vec<bool>,
     features: Vec<Option<Feature>>,
@@ -99,6 +104,8 @@ impl Map {
         let tiles = add_beaches(&land, seed);
         let features = place_features(&tiles, seed);
         Self {
+            kind,
+            seed,
             tiles,
             river,
             features,

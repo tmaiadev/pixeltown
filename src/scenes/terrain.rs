@@ -1,28 +1,22 @@
-mod camera;
-mod chunks;
 mod dock;
-mod trees;
+
+use std::path::PathBuf;
 
 use macroquad::miniquad::date;
 use macroquad::prelude::*;
 
 use super::{gameplay::GameplayScene, Scene};
 use crate::input::{Action, Device, Input};
-use crate::map::{autotile, rng::Rng, Map, TerrainType, MAP_SIZE};
+use crate::map::{rng::Rng, save, Map, TerrainType};
+use crate::map_view::camera::{self, Camera, Motion, MAP_CENTER};
+use crate::map_view::MapView;
 use crate::utils::animation::Animation;
 use crate::utils::assets::load_font;
-use crate::utils::frame_animation::FrameAnimation;
-use crate::utils::spritesheet::Spritesheet;
 use crate::{internal_width, set_internal_camera, INTERNAL_HEIGHT};
-use camera::{Camera, Motion, TILE_SIZE};
-use chunks::ChunkCache;
 use dock::{DockButton, DockView};
 
 const FADE_IN: f32 = 1.0;
-const FADE_OUT: f32 = 0.8;
-const WATER_FPS: f32 = 4.0;
-const GRID_COLOR: Color = Color::new(1.0, 1.0, 1.0, 0.25);
-const FOREST_SHADOW: Color = Color::new(0.0, 0.0, 0.0, 0.27);
+const FADE_OUT: f32 = 1.2;
 const NAVIGATION: [Action; 4] = [Action::Up, Action::Down, Action::Left, Action::Right];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,19 +28,12 @@ enum Phase {
 
 pub struct TerrainScene {
     font: Font,
-    sheet: Spritesheet,
-    nature: Spritesheet,
-    water: FrameAnimation,
     map: Map,
-    cells: Vec<autotile::Tile>,
-    features: Vec<Option<(u8, u8)>>,
-    forests: Vec<Option<(u8, u8)>>,
-    trees: Vec<autotile::TreeCell>,
-    forest_trunks: Vec<(u16, u16)>,
-    ground: ChunkCache,
-    canopy: ChunkCache,
+    view: MapView,
     selected: TerrainType,
     camera: Camera,
+    departure: (Vec2, f32),
+    save: Option<PathBuf>,
     rng: Rng,
     phase: Phase,
     fade_in: Animation,
@@ -60,39 +47,20 @@ pub struct TerrainScene {
 
 impl TerrainScene {
     pub fn new() -> Self {
-        let sheet = Spritesheet::from_png(
-            include_bytes!("../../assets/sprites/terrain.png"),
-            TILE_SIZE,
-        );
-        let nature = Spritesheet::from_png(
-            include_bytes!("../../assets/sprites/nature.png"),
-            TILE_SIZE,
-        );
-
         let mut rng = Rng::new((date::now() * 1000.0) as u64);
         let selected = TerrainType::Inland;
         let map = Map::generate(selected, rng.next_u64());
-        let cells = autotile::tile_cells(&map);
-        let features = autotile::feature_cells(&map);
-        let forests = autotile::forest_cells(&map);
-        let trees = autotile::tree_cells(&map);
-        let forest_trunks = autotile::forest_trunks(&map);
+        let viewport = vec2(internal_width(), INTERNAL_HEIGHT);
+        let camera = Camera::new(viewport);
 
-        let scene = Self {
+        Self {
             font: load_font(),
-            sheet,
-            nature,
-            water: FrameAnimation::new(autotile::WATER_FRAMES, WATER_FPS),
+            view: MapView::new(&map),
             map,
-            cells,
-            features,
-            forests,
-            trees,
-            forest_trunks,
-            ground: ChunkCache::new(),
-            canopy: ChunkCache::new(),
             selected,
-            camera: Camera::new(vec2(internal_width(), INTERNAL_HEIGHT)),
+            departure: camera.view(),
+            camera,
+            save: None,
             rng,
             phase: Phase::FadingIn,
             fade_in: Animation::new(FADE_IN).autostart(),
@@ -102,45 +70,33 @@ impl TerrainScene {
             device: Device::KeyboardMouse,
             pointer: None,
             grid_visible: false,
-        };
-        scene.bake();
-        scene
+        }
     }
 
     fn generate(&mut self) {
         self.map = Map::generate(self.selected, self.rng.next_u64());
-        self.cells = autotile::tile_cells(&self.map);
-        self.features = autotile::feature_cells(&self.map);
-        self.forests = autotile::forest_cells(&self.map);
-        self.trees = autotile::tree_cells(&self.map);
-        self.forest_trunks = autotile::forest_trunks(&self.map);
-        self.bake();
+        self.view.set_map(&self.map);
     }
 
-    // Animated tiles are left transparent in the ground layer and drawn every frame.
-    fn bake(&self) {
-        self.ground.render(|chunk| {
-            let tiles = || chunks::chunk_tiles(chunk).filter(|&(_, _, i)| !self.cells[i].is_animated());
-            for (x, y, i) in tiles() {
-                let (col, row) = autotile::animated_cell(self.cells[i], 0, 0);
-                self.sheet.draw_tile(col, row, x, y);
+    fn accept(&mut self) {
+        self.save = save::write(&self.map)
+            .inspect_err(|err| eprintln!("error: could not save map: {err}"))
+            .ok();
+        self.departure = self.camera.view();
+        self.phase = Phase::FadingOut;
+        self.fade_out.start();
+    }
+
+    fn gameplay(&self) -> GameplayScene {
+        let loaded = self.save.as_deref().map(GameplayScene::load);
+        match loaded {
+            Some(Ok(scene)) => scene,
+            Some(Err(err)) => {
+                eprintln!("error: could not load saved map: {err}");
+                GameplayScene::new(&self.map)
             }
-            for (x, y, i) in tiles() {
-                if let Some((col, row)) = self.features[i] {
-                    self.nature.draw_tile(col as usize, row as usize, x, y);
-                }
-                if let Some((col, row)) = self.forests[i] {
-                    self.nature.draw_tile_tinted(col as usize, row as usize, x, y, FOREST_SHADOW);
-                }
-            }
-        });
-        self.canopy.render(|chunk| {
-            for (x, y, i) in chunks::chunk_tiles(chunk) {
-                if let Some((col, row)) = self.forests[i] {
-                    self.nature.draw_tile(col as usize, row as usize, x, y);
-                }
-            }
-        });
+            None => GameplayScene::new(&self.map),
+        }
     }
 
     fn activate(&mut self, button: usize) {
@@ -150,10 +106,7 @@ impl TerrainScene {
                 self.generate();
             }
             DockButton::Generate => self.generate(),
-            DockButton::Accept => {
-                self.phase = Phase::FadingOut;
-                self.fade_out.start();
-            }
+            DockButton::Accept => self.accept(),
         }
     }
 
@@ -180,41 +133,6 @@ impl TerrainScene {
         }
     }
 
-    fn draw_map(&self, viewport: Vec2) {
-        set_camera(&self.camera.camera_2d(viewport));
-
-        let visible = self.camera.visible_tiles(viewport);
-        let (x0, y0, x1, y1) = visible;
-        self.ground.draw(visible);
-
-        let frame = self.water.frame();
-        let animated = || {
-            (y0..y1)
-                .flat_map(move |y| (x0..x1).map(move |x| (x, y, y * MAP_SIZE + x)))
-                .filter(|&(_, _, i)| self.cells[i].is_animated())
-        };
-        // Each pass sticks to one spritesheet so consecutive tiles batch into one draw call.
-        for (x, y, i) in animated() {
-            let (col, row) = autotile::animated_cell(self.cells[i], frame, x + y);
-            self.sheet.draw_tile(col, row, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
-        }
-        for (x, y, i) in animated() {
-            if let Some((col, row)) = self.features[i] {
-                self.nature.draw_tile(col as usize, row as usize, x as f32 * TILE_SIZE, y as f32 * TILE_SIZE);
-            }
-        }
-
-        let perspective = self.camera.perspective(viewport);
-        trees::draw_shadows(&self.nature, &self.trees, visible);
-        trees::draw_trunks(&self.nature, &self.forest_trunks, visible, &perspective);
-        self.canopy.draw_raised(visible, &perspective, trees::TREE_HEIGHT);
-        trees::draw_trees(&self.nature, &self.trees, visible, &perspective);
-
-        if self.grid_visible {
-            draw_grid(visible, self.camera.zoom());
-        }
-    }
-
     fn draw_ui(&self, viewport: Vec2, alpha: f32) {
         let dock = dock::layout(viewport.x, viewport.y);
         let hovered = match self.device {
@@ -231,20 +149,6 @@ impl TerrainScene {
             alpha,
         };
         dock::draw(&dock, &view);
-    }
-}
-
-fn draw_grid((x0, y0, x1, y1): (usize, usize, usize, usize), zoom: f32) {
-    let thickness = 1.0 / zoom;
-    let (left, right) = (x0 as f32 * TILE_SIZE, x1 as f32 * TILE_SIZE);
-    let (top, bottom) = (y0 as f32 * TILE_SIZE, y1 as f32 * TILE_SIZE);
-    for x in x0..=x1 {
-        let px = x as f32 * TILE_SIZE;
-        draw_line(px, top, px, bottom, thickness, GRID_COLOR);
-    }
-    for y in y0..=y1 {
-        let py = y as f32 * TILE_SIZE;
-        draw_line(left, py, right, py, thickness, GRID_COLOR);
     }
 }
 
@@ -265,7 +169,7 @@ impl Scene for TerrainScene {
             Phase::FadingOut => {
                 self.fade_out.update(dt);
                 if self.fade_out.has_ended() {
-                    return Some(Box::new(GameplayScene));
+                    return Some(Box::new(self.gameplay()));
                 }
             }
             Phase::Editing => {}
@@ -282,7 +186,12 @@ impl Scene for TerrainScene {
             }
         };
         self.camera.update(dt, viewport, motion);
-        self.water.update(dt);
+        if self.phase == Phase::FadingOut {
+            let home = (MAP_CENTER, GameplayScene::ZOOM);
+            let (center, zoom) = camera::glide(self.departure, home, self.fade_out.progress());
+            self.camera.set_view(center, zoom, viewport);
+        }
+        self.view.update(dt);
 
         if self.phase == Phase::Editing {
             if input.grid_toggled() {
@@ -296,7 +205,7 @@ impl Scene for TerrainScene {
     fn draw(&self) {
         clear_background(BLACK);
         let viewport = vec2(internal_width(), INTERNAL_HEIGHT);
-        self.draw_map(viewport);
+        self.view.draw(&self.camera, viewport, self.grid_visible);
 
         set_internal_camera();
         let ui_alpha = match self.phase {

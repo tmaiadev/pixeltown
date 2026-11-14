@@ -269,7 +269,7 @@ pub fn tile_cells(map: &Map) -> Vec<Tile> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::idx;
+    use crate::map::{idx, TerrainType};
 
     fn map_from(rows: &[&str]) -> Map {
         let mut tiles = vec![Terrain::Grass; MAP_SIZE * MAP_SIZE];
@@ -286,6 +286,8 @@ mod tests {
         }
         let features = vec![None; MAP_SIZE * MAP_SIZE];
         Map {
+            kind: TerrainType::Inland,
+            seed: 0,
             tiles,
             river,
             features,
