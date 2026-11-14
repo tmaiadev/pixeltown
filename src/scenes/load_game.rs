@@ -33,7 +33,7 @@ const SCROLL_THUMB: Color = rgb(78, 86, 138);
 
 enum Next {
     Menu,
-    Gameplay(GameplayScene),
+    Gameplay(Box<GameplayScene>),
 }
 
 struct Row {
@@ -115,7 +115,7 @@ impl LoadGameScene {
                     return;
                 };
                 match GameplayScene::load(&entry.path) {
-                    Ok(scene) => self.leave(Next::Gameplay(scene)),
+                    Ok(scene) => self.leave(Next::Gameplay(Box::new(scene))),
                     Err(err) => {
                         eprintln!("error: could not load {}: {err}", entry.path.display());
                         self.error = Some("Could not load this save");
@@ -356,7 +356,7 @@ impl Scene for LoadGameScene {
             }
             return match self.next.take()? {
                 Next::Menu => Some(Box::new(MenuScene::new())),
-                Next::Gameplay(scene) => Some(Box::new(scene)),
+                Next::Gameplay(scene) => Some(scene),
             };
         }
         if self.fade_in.has_ended() {
