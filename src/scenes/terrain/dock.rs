@@ -103,8 +103,8 @@ pub fn move_focus(focus: usize, action: Action) -> usize {
     match action {
         Action::Left => (focus + BUTTON_COUNT - 1) % BUTTON_COUNT,
         Action::Right => (focus + 1) % BUTTON_COUNT,
-        Action::Up if focus >= GENERATE => focus - GENERATE,
-        Action::Down if focus < GENERATE => GENERATE + focus / 2,
+        Action::Up | Action::Down if focus >= GENERATE => focus - GENERATE,
+        Action::Up | Action::Down => GENERATE + focus / 2,
         _ => focus,
     }
 }
@@ -258,7 +258,9 @@ mod tests {
         assert_eq!(move_focus(2, Action::Right), 3);
         assert_eq!(move_focus(GENERATE, Action::Up), 0);
         assert_eq!(move_focus(3, Action::Down), ACCEPT);
-        assert_eq!(move_focus(1, Action::Up), 1);
+        assert_eq!(move_focus(1, Action::Up), GENERATE);
+        assert_eq!(move_focus(2, Action::Up), ACCEPT);
+        assert_eq!(move_focus(ACCEPT, Action::Down), 1);
         assert_eq!(move_focus(2, Action::Confirm), 2);
     }
 }

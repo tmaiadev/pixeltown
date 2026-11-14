@@ -36,6 +36,7 @@ pub struct Input {
     gestures: Gestures,
     last_device: Device,
     actions: [bool; ACTION_COUNT],
+    nav_actions: [bool; ACTION_COUNT],
     any_pressed: bool,
     pointer: Option<Vec2>,
     last_mouse: Vec2,
@@ -54,6 +55,7 @@ impl Input {
             gestures: Gestures::default(),
             last_device: Device::KeyboardMouse,
             actions: [false; ACTION_COUNT],
+            nav_actions: [false; ACTION_COUNT],
             any_pressed: false,
             pointer: None,
             last_mouse: internal_mouse_position(),
@@ -68,6 +70,7 @@ impl Input {
 
     pub fn update(&mut self) {
         self.actions = [false; ACTION_COUNT];
+        self.nav_actions = [false; ACTION_COUNT];
         self.any_pressed = false;
         self.pointer_moved = false;
         self.pointer_clicked = false;
@@ -109,8 +112,12 @@ impl Input {
             self.last_device = Device::KeyboardMouse;
         }
 
-        for action in keyboard::pressed_actions() {
-            self.press(action);
+        for action in keyboard::pressed_nav_actions() {
+            self.press(action, true);
+            self.last_device = Device::KeyboardMouse;
+        }
+        for action in keyboard::pressed_wasd_actions() {
+            self.press(action, false);
             self.last_device = Device::KeyboardMouse;
         }
         if keyboard::any_key_pressed() {
@@ -136,7 +143,7 @@ impl Input {
         self.zoom_step += pad.zoom_step;
         self.pan = self.pan.clamp_length_max(1.0);
         for action in pad.actions {
-            self.press(action);
+            self.press(action, true);
         }
         if pad.any_pressed {
             self.any_pressed = true;
@@ -146,8 +153,11 @@ impl Input {
         }
     }
 
-    fn press(&mut self, action: Action) {
+    fn press(&mut self, action: Action, nav: bool) {
         self.actions[action as usize] = true;
+        if nav {
+            self.nav_actions[action as usize] = true;
+        }
         self.any_pressed = true;
     }
 
@@ -157,6 +167,10 @@ impl Input {
 
     pub fn pressed(&self, action: Action) -> bool {
         self.actions[action as usize]
+    }
+
+    pub fn pressed_nav(&self, action: Action) -> bool {
+        self.nav_actions[action as usize]
     }
 
     pub fn any_pressed(&self) -> bool {

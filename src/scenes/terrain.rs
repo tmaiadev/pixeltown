@@ -97,7 +97,7 @@ impl TerrainScene {
 
     fn handle_dock(&mut self, input: &Input, viewport: Vec2) {
         for action in NAVIGATION {
-            if input.pressed(action) {
+            if input.pressed_nav(action) {
                 self.focus = dock::move_focus(self.focus, action);
                 self.focus_visible = true;
             }
