@@ -1,4 +1,4 @@
-use super::{Map, Terrain, MAP_SIZE};
+use super::{Feature, Map, Terrain, MAP_SIZE};
 
 pub const SHEET_COLUMNS: usize = 16;
 const GRASS_VARIANTS: usize = 4;
@@ -8,6 +8,11 @@ const SAND_START: usize = GRASS_VARIANTS;
 const WATER_START: usize = SAND_START + SAND_VARIANTS;
 const SHORE_START: usize = SHEET_COLUMNS;
 const GRASS_EDGE_START: usize = 4 * SHEET_COLUMNS;
+
+const FEATURE_VARIANTS: usize = 3;
+const TREE_START: usize = 0;
+const FOREST_START: usize = TREE_START + FEATURE_VARIANTS;
+const ROCK_START: usize = FOREST_START + FEATURE_VARIANTS;
 
 pub const WATER_FRAMES: usize = 4;
 const FRAMES_START_ROW: usize = 7;
@@ -100,6 +105,25 @@ pub fn tile_cell(map: &Map, x: usize, y: usize) -> (usize, usize) {
     }
 }
 
+pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<(usize, usize)> {
+    let start = match map.feature(x, y)? {
+        Feature::Tree => TREE_START,
+        Feature::Forest => FOREST_START,
+        Feature::Rock => ROCK_START,
+    };
+    Some(cell(start + variant(x, y, FEATURE_VARIANTS)))
+}
+
+pub fn feature_cells(map: &Map) -> Vec<Option<(u8, u8)>> {
+    let mut cells = Vec::with_capacity(MAP_SIZE * MAP_SIZE);
+    for y in 0..MAP_SIZE {
+        for x in 0..MAP_SIZE {
+            cells.push(feature_cell(map, x, y).map(|(col, row)| (col as u8, row as u8)));
+        }
+    }
+    cells
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Tile {
     cell: (u8, u8),
@@ -176,7 +200,31 @@ mod tests {
                 };
             }
         }
-        Map { tiles, river }
+        let features = vec![None; MAP_SIZE * MAP_SIZE];
+        Map {
+            tiles,
+            river,
+            features,
+        }
+    }
+
+    #[test]
+    fn features_pick_cells_from_their_own_section() {
+        let mut map = map_from(&["###"]);
+        assert_eq!(feature_cell(&map, 0, 0), None);
+        let sections = [
+            (Feature::Tree, TREE_START),
+            (Feature::Forest, FOREST_START),
+            (Feature::Rock, ROCK_START),
+        ];
+        for (feature, start) in sections {
+            for x in 0..3 {
+                map.features[idx(x, 0)] = Some(feature);
+                let (col, row) = feature_cell(&map, x, 0).unwrap();
+                assert_eq!(row, 0);
+                assert!((start..start + FEATURE_VARIANTS).contains(&col));
+            }
+        }
     }
 
     #[test]

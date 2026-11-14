@@ -11,6 +11,14 @@ const EDGE_SINK: f32 = 0.4;
 const MAX_BEACH: u8 = 3;
 const SEA_RATIO: f32 = 0.2;
 const SEA_DEPTH_VARIATION: f32 = 16.0;
+const FEATURE_SEED: u64 = 0xF0E5;
+const FOREST_SCALE: f32 = 0.04;
+const FOREST_THRESHOLD: f32 = 0.66;
+const FOREST_FRINGE: f32 = 0.08;
+const TREE_CHANCE: f32 = 0.04;
+const FRINGE_TREE_CHANCE: f32 = 0.25;
+const ROCK_CHANCE: f32 = 0.006;
+const ROCK_SPREAD_CHANCE: f32 = 0.1;
 const NEIGHBORS: [(i32, i32); 8] = [
     (-1, -1),
     (0, -1),
@@ -27,6 +35,13 @@ pub enum Terrain {
     Grass,
     Water,
     Sand,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Feature {
+    Tree,
+    Forest,
+    Rock,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -68,6 +83,7 @@ const SIDES: [Side; 4] = [Side::North, Side::South, Side::West, Side::East];
 pub struct Map {
     tiles: Vec<Terrain>,
     river: Vec<bool>,
+    features: Vec<Option<Feature>>,
 }
 
 impl Map {
@@ -80,9 +96,12 @@ impl Map {
             TerrainType::Archipelago => archipelago(seed),
             TerrainType::Seaside => seaside(&mut rng, seed, &mut river),
         };
+        let tiles = add_beaches(&land, seed);
+        let features = place_features(&tiles, seed);
         Self {
-            tiles: add_beaches(&land, seed),
+            tiles,
             river,
+            features,
         }
     }
 
@@ -92,6 +111,10 @@ impl Map {
 
     pub fn is_river(&self, x: usize, y: usize) -> bool {
         self.river[idx(x, y)]
+    }
+
+    pub fn feature(&self, x: usize, y: usize) -> Option<Feature> {
+        self.features[idx(x, y)]
     }
 
     pub fn in_bounds(x: i32, y: i32) -> bool {
@@ -282,6 +305,57 @@ fn beach_width(x: usize, y: usize, seed: u64) -> u8 {
     1 + ((noise - 0.35) / 0.3 * 3.0).clamp(0.0, 2.99) as u8
 }
 
+fn place_features(tiles: &[Terrain], seed: u64) -> Vec<Option<Feature>> {
+    let mut rng = Rng::new(seed ^ FEATURE_SEED);
+    let mut features = vec![None; MAP_SIZE * MAP_SIZE];
+    for y in 0..MAP_SIZE {
+        for x in 0..MAP_SIZE {
+            let i = idx(x, y);
+            if tiles[i] != Terrain::Grass {
+                continue;
+            }
+            let density = fbm(
+                x as f32 * FOREST_SCALE,
+                y as f32 * FOREST_SCALE,
+                seed ^ FEATURE_SEED,
+                3,
+            );
+            let tree_chance = if density >= FOREST_THRESHOLD - FOREST_FRINGE {
+                FRINGE_TREE_CHANCE
+            } else {
+                TREE_CHANCE
+            };
+            if density >= FOREST_THRESHOLD {
+                features[i] = Some(Feature::Forest);
+            } else if rng.chance(tree_chance) {
+                features[i] = Some(Feature::Tree);
+            }
+        }
+    }
+
+    for y in 0..MAP_SIZE {
+        for x in 0..MAP_SIZE {
+            if !rng.chance(ROCK_CHANCE) {
+                continue;
+            }
+            place_rock(tiles, &mut features, idx(x, y));
+            for (dx, dy) in NEIGHBORS {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if Map::in_bounds(nx, ny) && rng.chance(ROCK_SPREAD_CHANCE) {
+                    place_rock(tiles, &mut features, idx(nx as usize, ny as usize));
+                }
+            }
+        }
+    }
+    features
+}
+
+fn place_rock(tiles: &[Terrain], features: &mut [Option<Feature>], i: usize) {
+    if tiles[i] != Terrain::Water && features[i] != Some(Feature::Forest) {
+        features[i] = Some(Feature::Rock);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,6 +496,80 @@ mod tests {
                 reaches(i, 0) || reaches(i, MAP_SIZE - 1) || reaches(0, i) || reaches(MAP_SIZE - 1, i)
             });
             assert!(far_edge);
+        }
+    }
+
+    fn count(map: &Map, feature: Feature) -> usize {
+        map.features.iter().filter(|&&f| f == Some(feature)).count()
+    }
+
+    #[test]
+    fn features_are_deterministic_per_seed() {
+        for kind in TerrainType::ALL {
+            assert!(Map::generate(kind, 5).features == Map::generate(kind, 5).features);
+            assert!(Map::generate(kind, 1).features != Map::generate(kind, 2).features);
+        }
+    }
+
+    #[test]
+    fn features_sit_only_on_allowed_terrain() {
+        for kind in TerrainType::ALL {
+            for seed in SEEDS {
+                let map = Map::generate(kind, seed);
+                for y in 0..MAP_SIZE {
+                    for x in 0..MAP_SIZE {
+                        let terrain = map.get(x, y);
+                        match map.feature(x, y) {
+                            Some(Feature::Tree | Feature::Forest) => {
+                                assert_eq!(terrain, Terrain::Grass)
+                            }
+                            Some(Feature::Rock) => assert_ne!(terrain, Terrain::Water),
+                            None => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_map_has_trees_rocks_and_some_forest() {
+        for kind in TerrainType::ALL {
+            for seed in SEEDS {
+                let map = Map::generate(kind, seed);
+                let grass = map.tiles.iter().filter(|&&t| t == Terrain::Grass).count();
+                let forest = count(&map, Feature::Forest) as f32 / grass as f32;
+                assert!(count(&map, Feature::Tree) > 0, "{kind:?} {seed}");
+                assert!(count(&map, Feature::Rock) > 0, "{kind:?} {seed}");
+                assert!((0.02..0.3).contains(&forest), "{kind:?} {seed} {forest}");
+            }
+        }
+    }
+
+    #[test]
+    fn forests_are_clustered() {
+        for seed in SEEDS {
+            let map = Map::generate(TerrainType::Inland, seed);
+            let mut clustered = 0;
+            for y in 0..MAP_SIZE {
+                for x in 0..MAP_SIZE {
+                    if map.feature(x, y) != Some(Feature::Forest) {
+                        continue;
+                    }
+                    let neighbors = NEIGHBORS
+                        .iter()
+                        .filter(|&&(dx, dy)| {
+                            let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                            Map::in_bounds(nx, ny)
+                                && map.feature(nx as usize, ny as usize) == Some(Feature::Forest)
+                        })
+                        .count();
+                    if neighbors >= 2 {
+                        clustered += 1;
+                    }
+                }
+            }
+            assert!(clustered as f32 > count(&map, Feature::Forest) as f32 * 0.9);
         }
     }
 
