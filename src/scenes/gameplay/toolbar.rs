@@ -236,7 +236,7 @@ pub fn draw(toolbar: &Toolbar, view: &ToolbarView, screen_width: f32) {
         }
     }
     if let Some(tool) = view.hovered.or(view.focus) {
-        draw_tooltip(toolbar, tool, view.font, screen_width);
+        draw_tooltip(tool.label(), toolbar.button(tool).center().x, toolbar.panel.y, view.font, screen_width);
     }
 }
 
@@ -253,14 +253,13 @@ fn draw_demand(rect: Rect, demand: [f32; 4]) {
     }
 }
 
-fn draw_tooltip(toolbar: &Toolbar, tool: Tool, font: &Font, screen_width: f32) {
-    let label = tool.label();
+// Drawn above `top`, centered on `anchor` and kept inside the screen.
+pub fn draw_tooltip(label: &str, anchor: f32, top: f32, font: &Font, screen_width: f32) {
     let text_w = measure_text(label, Some(font), TOOLTIP_SIZE, 1.0).width;
     let w = (text_w + 2.0 * TOOLTIP_PAD).round();
-    let anchor = toolbar.button(tool).center().x;
     let max_x = (screen_width - TOOLTIP_MARGIN - w).max(TOOLTIP_MARGIN);
     let x = (anchor - w / 2.0).clamp(TOOLTIP_MARGIN, max_x).round();
-    let y = toolbar.panel.y - TOOLTIP_GAP - TOOLTIP_HEIGHT;
+    let y = top - TOOLTIP_GAP - TOOLTIP_HEIGHT;
     draw_rectangle(x, y, w, TOOLTIP_HEIGHT, with_alpha(BLACK, 0.85));
     let center = vec2(x + w / 2.0, y + TOOLTIP_HEIGHT / 2.0);
     draw_text_centered(font, label, center, TOOLTIP_SIZE, TEXT);

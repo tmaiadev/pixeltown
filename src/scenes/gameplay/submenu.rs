@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use super::toolbar::Toolbar;
+use super::toolbar::{draw_tooltip, Toolbar};
 use crate::input::Action;
 use crate::map::autotile::SpriteCell;
 use crate::ui::panel::{draw_button, draw_panel, ButtonState};
@@ -11,7 +11,6 @@ const FIRST_ICON_ROW: usize = 2;
 const PAD: f32 = 4.0;
 const GAP: f32 = 2.0;
 const GROUP_GAP: f32 = 8.0;
-const PANEL_GAP: f32 = 2.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PowerItem {
@@ -47,6 +46,19 @@ impl PowerItem {
         Self::ALL.iter().position(|&i| i == self).expect("every item is listed in ALL")
     }
 
+    pub fn label(self) -> &'static str {
+        match self {
+            PowerItem::PowerLine => "Power Line",
+            PowerItem::Coal => "Coal Power Plant",
+            PowerItem::Oil => "Oil Power Plant",
+            PowerItem::Gas => "Gas Power Plant",
+            PowerItem::Hydroelectric => "Hydroelectric Plant",
+            PowerItem::Solar => "Solar Power Plant",
+            PowerItem::Wind => "Wind Power Plant",
+            PowerItem::Nuclear => "Nuclear Power Plant",
+        }
+    }
+
     pub fn icon(self) -> SpriteCell {
         let cell = FIRST_ICON_ROW * SHEET_COLS + self.index();
         SpriteCell::new(cell % SHEET_COLS, cell / SHEET_COLS)
@@ -68,18 +80,17 @@ impl Submenu {
     }
 }
 
-// Sits right above the toolbar, centered on the button that opened it.
-pub fn layout(toolbar: &Toolbar, anchor: Rect) -> Submenu {
+// Sits flush on top of the toolbar, centered on the screen.
+pub fn layout(toolbar: &Toolbar, button_size: f32) -> Submenu {
     let count = PowerItem::ALL.len() as f32;
     let fixed = (count - GROUPS.len() as f32) * GAP + (GROUPS.len() - 1) as f32 * GROUP_GAP;
     let fitting = ((toolbar.panel.w - 2.0 * PAD - fixed) / count).floor();
-    let size = anchor.h.min(fitting);
+    let size = button_size.min(fitting);
     let width = count * size + fixed;
     let panel_w = width + 2.0 * PAD;
-    let max_x = (toolbar.panel.right() - panel_w).max(0.0);
-    let x = (anchor.center().x - panel_w / 2.0).round().clamp(0.0, max_x);
+    let x = ((toolbar.panel.w - panel_w) / 2.0).round().max(0.0);
     let panel_h = size + 2.0 * PAD;
-    let panel = Rect::new(x, toolbar.panel.y - PANEL_GAP - panel_h, panel_w, panel_h);
+    let panel = Rect::new(x, toolbar.panel.y - panel_h, panel_w, panel_h);
 
     let mut buttons = [Rect::default(); PowerItem::ALL.len()];
     let mut bx = panel.x + PAD;
@@ -105,12 +116,13 @@ pub fn move_focus(focus: PowerItem, action: Action) -> PowerItem {
 }
 
 pub struct SubmenuView<'a> {
+    pub font: &'a Font,
     pub icons: &'a Spritesheet,
     pub hovered: Option<PowerItem>,
     pub focus: Option<PowerItem>,
 }
 
-pub fn draw(submenu: &Submenu, view: &SubmenuView) {
+pub fn draw(submenu: &Submenu, view: &SubmenuView, screen_width: f32) {
     draw_panel(submenu.panel, 1.0);
     for (&rect, item) in submenu.buttons.iter().zip(PowerItem::ALL) {
         let state = ButtonState::new(false, view.hovered == Some(item));
@@ -118,6 +130,10 @@ pub fn draw(submenu: &Submenu, view: &SubmenuView) {
         let size = Vec2::splat(view.icons.tile_size());
         let at = (rect.center() - size / 2.0).round();
         view.icons.draw_tile(item.icon(), at.x, at.y);
+    }
+    if let Some(item) = view.hovered.or(view.focus) {
+        let anchor = submenu.buttons[item.index()].center().x;
+        draw_tooltip(item.label(), anchor, submenu.panel.y, view.font, screen_width);
     }
 }
 
@@ -130,9 +146,10 @@ mod tests {
     fn submenu_sits_above_the_toolbar_inside_the_screen() {
         for (w, h) in [(853.0, 480.0), (360.0, 480.0), (220.0, 480.0)] {
             let bar = toolbar::layout(w, h);
-            let menu = layout(&bar, bar.button(Tool::Electricity));
+            let menu = layout(&bar, bar.button(Tool::Electricity).h);
             assert!(menu.panel.x >= 0.0 && menu.panel.right() <= w, "{w}x{h}");
-            assert!(menu.panel.bottom() <= bar.panel.y, "{w}x{h}");
+            assert_eq!(menu.panel.bottom(), bar.panel.y, "{w}x{h}");
+            assert!((menu.panel.x - (w - menu.panel.right())).abs() <= 0.5, "{w}x{h}");
             for b in menu.buttons {
                 assert!(b.x >= menu.panel.x && b.right() <= menu.panel.right(), "{w}x{h}");
             }

@@ -217,7 +217,7 @@ impl GameplayScene {
     }
 
     fn submenu(&self, toolbar: &toolbar::Toolbar) -> submenu::Submenu {
-        submenu::layout(toolbar, toolbar.button(Tool::Electricity))
+        submenu::layout(toolbar, toolbar.button(Tool::Electricity).h)
     }
 
     fn draw_ui(&self, input: &Input, viewport: Vec2) {
@@ -247,11 +247,12 @@ impl GameplayScene {
         if self.submenu_open() {
             let menu = self.submenu(&toolbar);
             let view = SubmenuView {
+                font: &self.font,
                 icons: &self.icons,
                 hovered: pointer.and_then(|p| menu.item_at(p)),
                 focus: self.focus_visible.then_some(self.power_focus),
             };
-            submenu::draw(&menu, &view);
+            submenu::draw(&menu, &view, viewport.x);
         }
     }
 }
