@@ -219,6 +219,7 @@ pub struct ToolbarView<'a> {
     pub hovered: Option<Tool>,
     pub focus: Option<Tool>,
     pub demand: [f32; 4],
+    pub tooltip: bool,
 }
 
 pub fn draw(toolbar: &Toolbar, view: &ToolbarView, screen_width: f32) {
@@ -235,7 +236,7 @@ pub fn draw(toolbar: &Toolbar, view: &ToolbarView, screen_width: f32) {
             None => draw_demand(rect, view.demand),
         }
     }
-    if let Some(tool) = view.hovered.or(view.focus) {
+    if let Some(tool) = view.hovered.or(view.focus).filter(|_| view.tooltip) {
         draw_tooltip(tool.label(), toolbar.button(tool).center().x, toolbar.panel.y, view.font, screen_width);
     }
 }

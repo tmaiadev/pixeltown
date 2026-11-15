@@ -241,6 +241,7 @@ impl GameplayScene {
             hovered: pointer.and_then(|p| toolbar.tool_at(p)),
             focus: self.focus_visible.then_some(self.focus),
             demand: DEMAND,
+            tooltip: !self.submenu_open(),
         };
         toolbar::draw(&toolbar, &view, viewport.x);
 
