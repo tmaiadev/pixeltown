@@ -93,22 +93,35 @@ impl GameplayScene {
     }
 
     fn building(&self) -> bool {
-        self.tool == Some(Tool::Roads)
+        matches!(self.tool, Some(Tool::Roads | Tool::Bulldoze))
     }
 
-    fn place_road(&mut self) {
+    fn apply_tool(&mut self) {
         let Some((x, y)) = self.cursor else { return };
-        self.build_at(x, y);
+        self.apply_at(x, y);
     }
 
-    fn build_at(&mut self, x: i32, y: i32) {
-        if self.map.build_road(x, y) {
+    fn apply_at(&mut self, x: i32, y: i32) {
+        let changed = match self.tool {
+            Some(Tool::Roads) => self.map.build_road(x, y),
+            Some(Tool::Bulldoze) => self.map.bulldoze(x, y),
+            _ => false,
+        };
+        if changed {
             self.built.push((x, y));
         }
     }
 
-    // Paints the roads between the last painted tile and the cursor while the button is held.
-    fn drag_road(&mut self, input: &Input) {
+    fn can_apply(&self, x: i32, y: i32) -> bool {
+        match self.tool {
+            Some(Tool::Roads) => self.map.can_build_road(x, y),
+            Some(Tool::Bulldoze) => self.map.can_bulldoze(x, y),
+            _ => false,
+        }
+    }
+
+    // Applies the tool between the last painted tile and the cursor while the button is held.
+    fn drag_tool(&mut self, input: &Input) {
         if !input.pointer_held() || !self.building() {
             self.drag_from = None;
             return;
@@ -116,7 +129,7 @@ impl GameplayScene {
         let (Some(from), Some(to)) = (self.drag_from, self.cursor) else { return };
         if from != to {
             for (x, y) in line(from, to) {
-                self.build_at(x, y);
+                self.apply_at(x, y);
             }
             self.drag_from = Some(to);
         }
@@ -159,7 +172,7 @@ impl GameplayScene {
 
         if input.pressed(Action::Confirm) {
             if self.building() {
-                self.place_road();
+                self.apply_tool();
             } else {
                 self.toggle_tool(self.focus);
             }
@@ -177,7 +190,7 @@ impl GameplayScene {
                 self.toggle_tool(tool);
             } else if self.building() {
                 self.cursor = self.camera.tile_at(pointer, map_area(viewport));
-                self.place_road();
+                self.apply_tool();
                 self.drag_from = self.cursor;
             }
         }
@@ -266,7 +279,7 @@ impl Scene for GameplayScene {
             self.cursor = input.pointer().and_then(|p| self.camera.tile_at(p, area));
         }
         self.handle_ui(input, viewport);
-        self.drag_road(input);
+        self.drag_tool(input);
         if !self.built.is_empty() {
             self.view.update_tiles(&self.map, &self.built);
             self.built.clear();
@@ -280,7 +293,7 @@ impl Scene for GameplayScene {
         let area = map_area(viewport);
         self.view.draw(&self.camera, viewport, area, self.building());
         if let (true, Some((x, y))) = (self.building(), self.cursor) {
-            let buildable = self.map.can_build_road(x, y);
+            let buildable = self.can_apply(x, y);
             self.view.draw_highlight(&self.camera, viewport, area, (x, y), buildable);
         }
 

@@ -187,6 +187,25 @@ impl Map {
         true
     }
 
+    pub fn can_bulldoze(&self, x: i32, y: i32) -> bool {
+        Self::in_bounds(x, y) && {
+            let (x, y) = (x as usize, y as usize);
+            self.road(x, y).is_some() || self.feature(x, y).is_some()
+        }
+    }
+
+    // Removes the road, or else the tree, forest or rock, on the tile; returns whether anything was removed.
+    pub fn bulldoze(&mut self, x: i32, y: i32) -> bool {
+        if !self.can_bulldoze(x, y) {
+            return false;
+        }
+        let i = idx(x as usize, y as usize);
+        if self.roads[i].take().is_none() {
+            self.features[i] = None;
+        }
+        true
+    }
+
     pub fn in_bounds(x: i32, y: i32) -> bool {
         x >= 0 && y >= 0 && (x as usize) < MAP_SIZE && (y as usize) < MAP_SIZE
     }
@@ -459,6 +478,22 @@ mod tests {
     use super::*;
 
     const SEEDS: [u64; 5] = [1, 7, 42, 1234, 99_999];
+
+    #[test]
+    fn bulldoze_removes_roads_and_features() {
+        let mut map = Map::generate(TerrainType::Inland, 42);
+        let (x, y) = (10, 10);
+        map.features[idx(x, y)] = Some(Feature::Rock);
+        assert!(map.bulldoze(x as i32, y as i32));
+        assert_eq!(map.feature(x, y), None);
+        assert!(!map.bulldoze(x as i32, y as i32));
+
+        map.features[idx(x, y)] = None;
+        map.roads[idx(x, y)] = Some(Road::Street);
+        assert!(map.bulldoze(x as i32, y as i32));
+        assert_eq!(map.road(x, y), None);
+        assert!(!map.bulldoze(-1, 0));
+    }
 
     fn land_ratio(map: &Map) -> f32 {
         let land = map.tiles.iter().filter(|&&t| t != Terrain::Water).count();
