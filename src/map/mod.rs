@@ -46,6 +46,19 @@ pub enum Feature {
     Rock,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+// A bridge is a road over water; it only runs straight along its axis.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Road {
+    Street,
+    Bridge(Axis),
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TerrainType {
@@ -83,12 +96,14 @@ enum Side {
 
 const SIDES: [Side; 4] = [Side::North, Side::South, Side::West, Side::East];
 
+#[derive(Clone)]
 pub struct Map {
     terrain_type: TerrainType,
     seed: u64,
     tiles: Vec<Terrain>,
     river: Vec<bool>,
     features: Vec<Option<Feature>>,
+    roads: Vec<Option<Road>>,
 }
 
 impl Map {
@@ -109,6 +124,7 @@ impl Map {
             tiles,
             river,
             features,
+            roads: vec![None; MAP_SIZE * MAP_SIZE],
         }
     }
 
@@ -122,6 +138,53 @@ impl Map {
 
     pub fn feature(&self, x: usize, y: usize) -> Option<Feature> {
         self.features[idx(x, y)]
+    }
+
+    pub fn road(&self, x: usize, y: usize) -> Option<Road> {
+        self.roads[idx(x, y)]
+    }
+
+    // The axis a bridge placed on this water tile would run along: it must continue a road
+    // coming from a neighbor, and a neighboring bridge can only be extended straight.
+    fn bridge_axis(&self, x: usize, y: usize) -> Option<Axis> {
+        let (x, y) = (x as i32, y as i32);
+        [(0, -1), (1, 0), (0, 1), (-1, 0)].into_iter().find_map(|(dx, dy)| {
+            let (nx, ny) = (x + dx, y + dy);
+            if !Self::in_bounds(nx, ny) {
+                return None;
+            }
+            let axis = if dx == 0 { Axis::Vertical } else { Axis::Horizontal };
+            match self.road(nx as usize, ny as usize)? {
+                Road::Bridge(a) if a != axis => None,
+                _ => Some(axis),
+            }
+        })
+    }
+
+    pub fn can_build_road(&self, x: i32, y: i32) -> bool {
+        if !Self::in_bounds(x, y) {
+            return false;
+        }
+        let (x, y) = (x as usize, y as usize);
+        if self.road(x, y).is_some() || self.feature(x, y) == Some(Feature::Rock) {
+            return false;
+        }
+        self.terrain(x, y) != Terrain::Water || self.bridge_axis(x, y).is_some()
+    }
+
+    // Replaces trees and forests; returns whether a road was placed.
+    pub fn build_road(&mut self, x: i32, y: i32) -> bool {
+        if !self.can_build_road(x, y) {
+            return false;
+        }
+        let i = idx(x as usize, y as usize);
+        let road = match self.bridge_axis(x as usize, y as usize) {
+            Some(axis) if self.terrain(x as usize, y as usize) == Terrain::Water => Road::Bridge(axis),
+            _ => Road::Street,
+        };
+        self.roads[i] = Some(road);
+        self.features[i] = None;
+        true
     }
 
     pub fn in_bounds(x: i32, y: i32) -> bool {

@@ -106,6 +106,33 @@ impl Camera {
         }
     }
 
+    // Tile under a screen point, if the point is inside `area` and the map.
+    pub fn tile_at(&self, point: Vec2, area: Rect) -> Option<(i32, i32)> {
+        if !area.contains(point) {
+            return None;
+        }
+        let corner = ((self.center - area.size() / 2.0 / self.zoom) * self.zoom).round() / self.zoom;
+        let world = corner + (point - area.point()) / self.zoom;
+        let (x, y) = ((world.x / TILE_SIZE).floor() as i32, (world.y / TILE_SIZE).floor() as i32);
+        crate::map::Map::in_bounds(x, y).then_some((x, y))
+    }
+
+    // Screen position of a tile's top-left corner.
+    pub fn tile_origin(&self, tile: (i32, i32), area: Rect) -> Vec2 {
+        let corner = ((self.center - area.size() / 2.0 / self.zoom) * self.zoom).round() / self.zoom;
+        area.point() + (vec2(tile.0 as f32, tile.1 as f32) * TILE_SIZE - corner) * self.zoom
+    }
+
+    // Moves the view just enough to keep the tile fully visible.
+    pub fn reveal(&mut self, tile: (i32, i32), viewport: Vec2) {
+        let half = viewport / self.zoom / 2.0;
+        let min = vec2(tile.0 as f32, tile.1 as f32) * TILE_SIZE;
+        let max = min + Vec2::splat(TILE_SIZE);
+        let center = self.view_center();
+        let shift = (min - (center - half)).min(Vec2::ZERO) + (max - (center + half)).max(Vec2::ZERO);
+        self.center = clamp_center(self.center + shift, viewport / self.zoom);
+    }
+
     pub fn view_center(&self) -> Vec2 {
         (self.center * self.zoom).round() / self.zoom
     }
@@ -309,5 +336,16 @@ mod tests {
     fn growing_a_tile_rect_stays_inside_the_map() {
         let edge = TileRect { x0: 0, y0: 3, x1: MAP_SIZE, y1: 10 };
         assert_eq!(edge.grow(2), TileRect { x0: 0, y0: 1, x1: MAP_SIZE, y1: 12 });
+    }
+
+    #[test]
+    fn tile_at_inverts_the_view_and_rejects_points_outside() {
+        let area = Rect::new(0.0, 16.0, 480.0, 300.0);
+        let camera = Camera::centered(1.0, area.size());
+        let center = area.center();
+        assert_eq!(camera.tile_at(center, area), Some((128, 128)));
+        assert_eq!(camera.tile_at(vec2(0.0, 0.0), area), None);
+        let origin = camera.tile_origin((128, 128), area);
+        assert_eq!(camera.tile_at(origin + Vec2::splat(1.0), area), Some((128, 128)));
     }
 }

@@ -101,7 +101,7 @@ impl Tool {
     }
 
     // Icons follow `ALL` order in icons.png, right after the trash icon.
-    fn icon(self) -> Option<SpriteCell> {
+    pub fn icon(self) -> Option<SpriteCell> {
         let cell = self.index() + 1;
         (self != Tool::Reports).then(|| SpriteCell::new(cell % SHEET_COLS, cell / SHEET_COLS))
     }

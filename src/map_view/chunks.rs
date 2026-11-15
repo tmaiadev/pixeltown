@@ -6,7 +6,7 @@ use crate::screen::set_internal_camera;
 use crate::utils::perspective::Perspective;
 
 const CHUNK_TILES: usize = 32;
-const CHUNKS: usize = MAP_SIZE / CHUNK_TILES;
+pub const CHUNKS: usize = MAP_SIZE / CHUNK_TILES;
 const CHUNK_PIXELS: f32 = CHUNK_TILES as f32 * TILE_SIZE;
 
 // A map-wide layer baked into textures per chunk, with one texture per animation frame.
@@ -22,8 +22,14 @@ impl ChunkCache {
     }
 
     // `frames` says how many frames a chunk needs; `bake` draws a chunk's frame.
-    pub fn render(&mut self, frames: impl Fn(usize) -> usize, bake: impl Fn(usize, usize)) {
-        for (chunk, targets) in self.targets.iter_mut().enumerate() {
+    pub fn render_chunks(
+        &mut self,
+        chunks: impl IntoIterator<Item = usize>,
+        frames: impl Fn(usize) -> usize,
+        bake: impl Fn(usize, usize),
+    ) {
+        for chunk in chunks {
+            let targets = &mut self.targets[chunk];
             let count = frames(chunk).max(1);
             targets.truncate(count);
             while targets.len() < count {
@@ -87,6 +93,12 @@ fn chunk_origin(chunk: usize) -> Vec2 {
     vec2((chunk % CHUNKS) as f32, (chunk / CHUNKS) as f32) * CHUNK_PIXELS
 }
 
+// Chunks touching the tile or any of its eight neighbors.
+pub fn chunks_around(x: i32, y: i32) -> impl Iterator<Item = usize> {
+    let chunk = |v: i32| (v.clamp(0, MAP_SIZE as i32 - 1) as usize) / CHUNK_TILES;
+    (chunk(y - 1)..=chunk(y + 1)).flat_map(move |cy| (chunk(x - 1)..=chunk(x + 1)).map(move |cx| cy * CHUNKS + cx))
+}
+
 pub fn chunk_tiles(chunk: usize) -> impl Iterator<Item = (f32, f32, usize)> + Clone {
     let (cx, cy) = (chunk % CHUNKS * CHUNK_TILES, chunk / CHUNKS * CHUNK_TILES);
     (cy..cy + CHUNK_TILES).flat_map(move |y| {
@@ -117,5 +129,13 @@ mod tests {
             assert!(x >= origin.x && x < origin.x + CHUNK_PIXELS);
             assert!(y >= origin.y && y < origin.y + CHUNK_PIXELS);
         }
+    }
+
+    #[test]
+    fn chunks_around_a_tile_cover_chunk_borders() {
+        assert_eq!(chunks_around(5, 5).collect::<Vec<_>>(), vec![0]);
+        assert_eq!(chunks_around(32, 5).collect::<Vec<_>>(), vec![0, 1]);
+        assert_eq!(chunks_around(32, 32).collect::<Vec<_>>(), vec![0, 1, CHUNKS, CHUNKS + 1]);
+        assert_eq!(chunks_around(0, 0).collect::<Vec<_>>(), vec![0]);
     }
 }

@@ -50,6 +50,7 @@ struct Frame {
     pointer: Option<Vec2>,
     pointer_moved: bool,
     pointer_clicked: bool,
+    pointer_held: bool,
     pan: Vec2,
     drag: Vec2,
     zoom_step: i32,
@@ -107,6 +108,7 @@ impl Input {
             self.frame.pointer_moved = true;
             used = true;
         }
+        self.frame.pointer_held = is_mouse_button_down(MouseButton::Left);
         if is_mouse_button_pressed(MouseButton::Left) {
             self.frame.pointer_clicked = true;
             self.frame.any_pressed = true;
@@ -217,6 +219,10 @@ impl Input {
 
     pub fn pointer_clicked(&self) -> bool {
         self.frame.pointer_clicked
+    }
+
+    pub fn pointer_held(&self) -> bool {
+        self.frame.pointer_held
     }
 
     pub fn pan(&self) -> Vec2 {

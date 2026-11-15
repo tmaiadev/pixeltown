@@ -1,4 +1,4 @@
-use super::{Feature, Map, Terrain, MAP_SIZE};
+use super::{Axis, Feature, Map, Road, Terrain, MAP_SIZE};
 
 pub const SHEET_COLUMNS: usize = 16;
 const GRASS_VARIANTS: usize = 4;
@@ -161,6 +161,57 @@ pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
     Some(cell(index))
 }
 
+const BRIDGE_DECK_ROW: usize = 1;
+const BRIDGE_TRUSS_ROW: usize = 2;
+
+fn bridge_col(axis: Axis) -> usize {
+    match axis {
+        Axis::Vertical => 0,
+        Axis::Horizontal => 1,
+    }
+}
+
+// Whether the road at (x, y) links to its neighbor in direction (dx, dy); bridges only link along their axis.
+fn linked(map: &Map, x: usize, y: usize, dx: i32, dy: i32) -> bool {
+    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+    if !Map::in_bounds(nx, ny) {
+        return false;
+    }
+    let axis = if dx == 0 { Axis::Vertical } else { Axis::Horizontal };
+    let straight = |road| !matches!(road, Some(Road::Bridge(a)) if a != axis);
+    map.road(nx as usize, ny as usize).is_some() && straight(map.road(x, y)) && straight(map.road(nx as usize, ny as usize))
+}
+
+// Street sprites are indexed by the N/E/S/W mask; an isolated street is drawn vertical.
+pub fn road_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
+    match map.road(x, y)? {
+        Road::Bridge(axis) => Some(SpriteCell::new(bridge_col(axis), BRIDGE_DECK_ROW)),
+        Road::Street => {
+            let mask = CARDINALS
+                .into_iter()
+                .filter(|&(dx, dy, _)| linked(map, x, y, dx, dy))
+                .fold(0u8, |mask, (_, _, bit)| mask | bit);
+            Some(SpriteCell::new(if mask == 0 { N | S } else { mask } as usize, 0))
+        }
+    }
+}
+
+// The metal structure drawn raised above a bridge.
+pub fn bridge_truss_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
+    match map.road(x, y)? {
+        Road::Bridge(axis) => Some(SpriteCell::new(bridge_col(axis), BRIDGE_TRUSS_ROW)),
+        Road::Street => None,
+    }
+}
+
+pub fn bridge_truss_cells(map: &Map) -> Vec<Option<SpriteCell>> {
+    per_tile(|x, y| bridge_truss_cell(map, x, y))
+}
+
+pub fn road_cells(map: &Map) -> Vec<Option<SpriteCell>> {
+    per_tile(|x, y| road_cell(map, x, y))
+}
+
 pub fn forest_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
     if map.feature(x, y) != Some(Feature::Forest) {
         return None;
@@ -292,6 +343,7 @@ mod tests {
             tiles,
             river,
             features,
+            roads: vec![None; MAP_SIZE * MAP_SIZE],
         }
     }
 
@@ -492,5 +544,55 @@ mod tests {
         let map = map_from(&["~..", "...", "..."]);
         let index = index(tile_cell(&map, 1, 1));
         assert_eq!(index - SHORE_START, BLOB_INDEX[NW as usize] as usize);
+    }
+
+    #[test]
+    fn roads_connect_to_neighbors_and_default_to_vertical() {
+        let mut map = map_from(&["###"]);
+        map.build_road(1, 1);
+        assert_eq!(road_cell(&map, 1, 1), Some(SpriteCell::new((N | S) as usize, 0)));
+        map.build_road(2, 1);
+        map.build_road(1, 2);
+        assert_eq!(road_cell(&map, 1, 1), Some(SpriteCell::new((E | S) as usize, 0)));
+        assert_eq!(road_cell(&map, 2, 1), Some(SpriteCell::new(W as usize, 0)));
+        assert_eq!(road_cell(&map, 0, 0), None);
+    }
+
+    #[test]
+    fn roads_cannot_be_built_on_water_rocks_or_roads_and_replace_trees() {
+        let mut map = map_from(&["~##"]);
+        map.features[idx(1, 0)] = Some(Feature::Rock);
+        map.features[idx(2, 0)] = Some(Feature::Tree);
+        assert!(!map.can_build_road(0, 0));
+        assert!(!map.can_build_road(1, 0));
+        assert!(!map.can_build_road(-1, 0));
+        assert!(map.build_road(2, 0));
+        assert_eq!(map.feature(2, 0), None);
+        assert!(!map.can_build_road(2, 0));
+    }
+
+    #[test]
+    fn bridges_start_from_a_road_and_only_extend_straight() {
+        let mut map = map_from(&["#~~~", "~~~~", "~~~~"]);
+        assert!(!map.can_build_road(1, 0));
+        map.build_road(0, 0);
+        assert!(!map.can_build_road(0, 2));
+        assert!(map.build_road(1, 0));
+        assert_eq!(map.road(1, 0), Some(Road::Bridge(Axis::Horizontal)));
+        assert!(!map.can_build_road(1, 1));
+        assert!(map.can_build_road(2, 0));
+        assert_eq!(road_cell(&map, 0, 0), Some(SpriteCell::new(E as usize, 0)));
+        assert_eq!(road_cell(&map, 1, 0), Some(SpriteCell::new(1, BRIDGE_DECK_ROW)));
+        assert_eq!(bridge_truss_cell(&map, 1, 0), Some(SpriteCell::new(1, BRIDGE_TRUSS_ROW)));
+    }
+
+    #[test]
+    fn streets_do_not_link_to_the_side_of_a_bridge() {
+        let mut map = map_from(&["#~#", "~~#"]);
+        map.build_road(0, 0);
+        map.build_road(1, 0);
+        map.build_road(2, 1);
+        map.build_road(2, 0);
+        assert_eq!(road_cell(&map, 2, 0), Some(SpriteCell::new((W | S) as usize, 0)));
     }
 }

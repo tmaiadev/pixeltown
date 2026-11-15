@@ -9,8 +9,8 @@ use macroquad::prelude::*;
 use super::Scene;
 use crate::input::{Action, Device, Input};
 use crate::map::save::{self, SaveError};
-use crate::map::{Map, TerrainType};
-use crate::map_view::camera::{Camera, Motion};
+use crate::map::{Map, TerrainType, MAP_SIZE};
+use crate::map_view::camera::{Camera, Motion, TILE_SIZE};
 use crate::map_view::MapView;
 use crate::screen::{self, set_internal_camera};
 use crate::utils::assets::{load_font, load_icons};
@@ -26,12 +26,17 @@ const DEMAND: [f32; 4] = [1.0, 0.5, 0.7, 0.2];
 pub struct GameplayScene {
     font: Font,
     icons: Spritesheet,
+    map: Map,
     view: MapView,
     camera: Camera,
     stats: Stats,
     tool: Option<Tool>,
     focus: Tool,
     focus_visible: bool,
+    cursor: Option<(i32, i32)>,
+    pointer_cursor: bool,
+    drag_from: Option<(i32, i32)>,
+    built: Vec<(i32, i32)>,
 }
 
 impl GameplayScene {
@@ -42,6 +47,7 @@ impl GameplayScene {
         Self {
             font: load_font(),
             icons: load_icons(),
+            map: map.clone(),
             view: MapView::new(map),
             camera: Camera::centered(Self::ZOOM, area.size()),
             stats: Stats {
@@ -53,6 +59,10 @@ impl GameplayScene {
             tool: None,
             focus: Tool::Roads,
             focus_visible: false,
+            cursor: None,
+            pointer_cursor: false,
+            drag_from: None,
+            built: Vec::new(),
         }
     }
 
@@ -79,25 +89,84 @@ impl GameplayScene {
 
     fn toggle_tool(&mut self, tool: Tool) {
         self.tool = (self.tool != Some(tool)).then_some(tool);
+        self.cursor = None;
+    }
+
+    fn building(&self) -> bool {
+        self.tool == Some(Tool::Roads)
+    }
+
+    fn place_road(&mut self) {
+        let Some((x, y)) = self.cursor else { return };
+        self.build_at(x, y);
+    }
+
+    fn build_at(&mut self, x: i32, y: i32) {
+        if self.map.build_road(x, y) {
+            self.built.push((x, y));
+        }
+    }
+
+    // Paints the roads between the last painted tile and the cursor while the button is held.
+    fn drag_road(&mut self, input: &Input) {
+        if !input.pointer_held() || !self.building() {
+            self.drag_from = None;
+            return;
+        }
+        let (Some(from), Some(to)) = (self.drag_from, self.cursor) else { return };
+        if from != to {
+            for (x, y) in line(from, to) {
+                self.build_at(x, y);
+            }
+            self.drag_from = Some(to);
+        }
+    }
+
+    fn move_cursor(&mut self, action: Action, viewport: Vec2) {
+        let area = map_area(viewport).size();
+        let (dx, dy) = match action {
+            Action::Up => (0, -1),
+            Action::Down => (0, 1),
+            Action::Left => (-1, 0),
+            _ => (1, 0),
+        };
+        let center = self.camera.view_center() / TILE_SIZE;
+        let start = (center.x as i32, center.y as i32);
+        let (x, y) = self.cursor.map_or(start, |(x, y)| (x + dx, y + dy));
+        let max = MAP_SIZE as i32 - 1;
+        let tile = (x.clamp(0, max), y.clamp(0, max));
+        self.cursor = Some(tile);
+        self.pointer_cursor = false;
+        self.camera.reveal(tile, area);
     }
 
     fn handle_ui(&mut self, input: &Input, viewport: Vec2) {
         let toolbar = toolbar::layout(viewport.x, viewport.y);
         for action in NAVIGATION {
             if input.pressed_nav(action) {
+                if self.building() {
+                    self.move_cursor(action, viewport);
+                    continue;
+                }
                 self.focus = toolbar::move_focus(&toolbar, self.focus, action);
                 self.focus_visible = true;
             }
         }
         if input.pointer_moved() || input.last_device() == Device::Touch {
             self.focus_visible = false;
+            self.pointer_cursor = true;
         }
 
         if input.pressed(Action::Confirm) {
-            self.toggle_tool(self.focus);
+            if self.building() {
+                self.place_road();
+            } else {
+                self.toggle_tool(self.focus);
+            }
         }
         if input.pressed(Action::Cancel) {
             self.tool = None;
+            self.cursor = None;
         }
         if input.pointer_clicked() {
             let Some(pointer) = input.pointer() else { return };
@@ -106,6 +175,10 @@ impl GameplayScene {
             } else if let Some(tool) = toolbar.tool_at(pointer) {
                 self.focus = tool;
                 self.toggle_tool(tool);
+            } else if self.building() {
+                self.cursor = self.camera.tile_at(pointer, map_area(viewport));
+                self.place_road();
+                self.drag_from = self.cursor;
             }
         }
     }
@@ -136,6 +209,40 @@ impl GameplayScene {
     }
 }
 
+impl GameplayScene {
+    // Small tool icon next to the pointer, or next to the cursor tile when driven by keys or a gamepad.
+    fn draw_cursor_icon(&self, input: &Input, area: Rect) {
+        let Some(icon) = self.tool.filter(|_| self.building()).and_then(Tool::icon) else { return };
+        let at = match (self.pointer_cursor, input.pointer(), self.cursor) {
+            (true, Some(pointer), _) if area.contains(pointer) => pointer + vec2(6.0, 6.0),
+            (false, _, Some(tile)) => self.camera.tile_origin(tile, area) + Vec2::splat(TILE_SIZE * self.camera.zoom() * 0.75),
+            _ => return,
+        };
+        self.icons.draw_tile(icon, at.x.round(), at.y.round());
+    }
+}
+
+// Tiles along a straight line, both ends included.
+fn line(from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+    let (dx, dy) = ((to.0 - from.0).abs(), -(to.1 - from.1).abs());
+    let (sx, sy) = ((to.0 - from.0).signum(), (to.1 - from.1).signum());
+    let (mut x, mut y, mut err) = (from.0, from.1, dx + dy);
+    let mut tiles = vec![(x, y)];
+    while (x, y) != to {
+        let doubled = 2 * err;
+        if doubled >= dy {
+            err += dy;
+            x += sx;
+        }
+        if doubled <= dx {
+            err += dx;
+            y += sy;
+        }
+        tiles.push((x, y));
+    }
+    tiles
+}
+
 // The part of the screen between the top bar and the toolbar, where the map is drawn.
 pub fn map_area(viewport: Vec2) -> Rect {
     let bottom = toolbar::layout(viewport.x, viewport.y).panel.y;
@@ -154,16 +261,44 @@ impl Scene for GameplayScene {
         };
         self.camera.update(dt, map_area(viewport).size(), motion);
         self.view.update(dt);
+        if self.building() && self.pointer_cursor {
+            let area = map_area(viewport);
+            self.cursor = input.pointer().and_then(|p| self.camera.tile_at(p, area));
+        }
         self.handle_ui(input, viewport);
+        self.drag_road(input);
+        if !self.built.is_empty() {
+            self.view.update_tiles(&self.map, &self.built);
+            self.built.clear();
+        }
         None
     }
 
     fn draw(&self, input: &Input) {
         clear_background(BLACK);
         let viewport = screen::viewport();
-        self.view.draw(&self.camera, viewport, map_area(viewport), false);
+        let area = map_area(viewport);
+        self.view.draw(&self.camera, viewport, area, self.building());
+        if let (true, Some((x, y))) = (self.building(), self.cursor) {
+            let buildable = self.map.can_build_road(x, y);
+            self.view.draw_highlight(&self.camera, viewport, area, (x, y), buildable);
+        }
 
         set_internal_camera();
         self.draw_ui(input, viewport);
+        self.draw_cursor_icon(input, area);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn line_includes_both_ends_and_has_no_gaps() {
+        let tiles = line((2, 3), (7, 5));
+        assert_eq!((tiles[0], *tiles.last().unwrap()), ((2, 3), (7, 5)));
+        assert!(tiles.windows(2).all(|w| (w[1].0 - w[0].0).abs() <= 1 && (w[1].1 - w[0].1).abs() <= 1));
+        assert_eq!(line((4, 4), (4, 4)), vec![(4, 4)]);
     }
 }

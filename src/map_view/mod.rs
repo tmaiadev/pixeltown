@@ -9,23 +9,30 @@ use crate::map::{Map, MAP_SIZE};
 use crate::utils::frame_animation::FrameAnimation;
 use crate::utils::spritesheet::Spritesheet;
 use camera::{Camera, TileRect, TILE_SIZE};
-use chunks::ChunkCache;
+use chunks::{ChunkCache, CHUNKS};
 
 const WATER_FPS: f32 = 4.0;
 const GRID_COLOR: Color = Color::new(1.0, 1.0, 1.0, 0.25);
+const BRIDGE_HEIGHT: f32 = 3.0;
+const BUILD_OK: Color = Color::new(0.45, 0.75, 1.0, 0.45);
+const BUILD_BLOCKED: Color = Color::new(1.0, 0.2, 0.2, 0.45);
 const FOREST_SHADOW: Color = Color::new(0.0, 0.0, 0.0, 0.27);
 
 pub struct MapView {
     sheet: Spritesheet,
     nature: Spritesheet,
+    roads_sheet: Spritesheet,
     water: FrameAnimation,
     cells: Vec<GroundSprite>,
     features: Vec<Option<SpriteCell>>,
     forests: Vec<Option<SpriteCell>>,
+    roads: Vec<Option<SpriteCell>>,
+    bridge_trusses: Vec<Option<SpriteCell>>,
     trees: Vec<autotile::TreeCell>,
     forest_trunks: Vec<(u16, u16)>,
     ground: ChunkCache,
     canopy: ChunkCache,
+    bridges: ChunkCache,
 }
 
 impl MapView {
@@ -33,14 +40,18 @@ impl MapView {
         let mut view = Self {
             sheet: Spritesheet::from_png(include_bytes!("../../assets/sprites/terrain.png"), TILE_SIZE),
             nature: Spritesheet::from_png(include_bytes!("../../assets/sprites/nature.png"), TILE_SIZE),
+            roads_sheet: Spritesheet::from_png(include_bytes!("../../assets/sprites/roads.png"), TILE_SIZE),
             water: FrameAnimation::new(autotile::WATER_FRAMES, WATER_FPS),
             cells: Vec::new(),
             features: Vec::new(),
             forests: Vec::new(),
+            roads: Vec::new(),
+            bridge_trusses: Vec::new(),
             trees: Vec::new(),
             forest_trunks: Vec::new(),
             ground: ChunkCache::new(),
             canopy: ChunkCache::new(),
+            bridges: ChunkCache::new(),
         };
         view.set_map(map);
         view
@@ -50,20 +61,37 @@ impl MapView {
         self.cells = autotile::ground_sprites(map);
         self.features = autotile::feature_cells(map);
         self.forests = autotile::forest_cells(map);
+        self.roads = autotile::road_cells(map);
+        self.bridge_trusses = autotile::bridge_truss_cells(map);
         self.trees = autotile::tree_cells(map);
         self.forest_trunks = autotile::forest_trunks(map);
-        self.bake();
+        self.bake(0..CHUNKS * CHUNKS);
+    }
+
+    // Refreshes only what building on `tiles` can change, rebaking just the chunks around them.
+    pub fn update_tiles(&mut self, map: &Map, tiles: &[(i32, i32)]) {
+        self.features = autotile::feature_cells(map);
+        self.forests = autotile::forest_cells(map);
+        self.roads = autotile::road_cells(map);
+        self.bridge_trusses = autotile::bridge_truss_cells(map);
+        self.trees = autotile::tree_cells(map);
+        self.forest_trunks = autotile::forest_trunks(map);
+        let mut dirty: Vec<usize> = tiles.iter().flat_map(|&(x, y)| chunks::chunks_around(x, y)).collect();
+        dirty.sort_unstable();
+        dirty.dedup();
+        self.bake(dirty);
     }
 
     pub fn update(&mut self, dt: f32) {
         self.water.update(dt);
     }
 
-    fn bake(&mut self) {
-        let (cells, features, forests) = (&self.cells, &self.features, &self.forests);
-        let (sheet, nature) = (&self.sheet, &self.nature);
+    fn bake(&mut self, chunks: impl IntoIterator<Item = usize> + Clone) {
+        let (cells, features, forests, roads) = (&self.cells, &self.features, &self.forests, &self.roads);
+        let (sheet, nature, roads_sheet) = (&self.sheet, &self.nature, &self.roads_sheet);
         let animated = |chunk| chunks::chunk_tiles(chunk).any(|(_, _, i)| cells[i].is_animated());
-        self.ground.render(
+        self.ground.render_chunks(
+            chunks.clone(),
             |chunk| if animated(chunk) { autotile::WATER_FRAMES } else { 1 },
             |chunk, frame| {
                 for (x, y, i) in chunks::chunk_tiles(chunk) {
@@ -77,10 +105,14 @@ impl MapView {
                     if let Some(cell) = forests[i] {
                         nature.draw_tile_tinted(cell, x, y, FOREST_SHADOW);
                     }
+                    if let Some(cell) = roads[i] {
+                        roads_sheet.draw_tile(cell, x, y);
+                    }
                 }
             },
         );
-        self.canopy.render(
+        self.canopy.render_chunks(
+            chunks.clone(),
             |_| 1,
             |chunk, _| {
                 for (x, y, i) in chunks::chunk_tiles(chunk) {
@@ -90,6 +122,26 @@ impl MapView {
                 }
             },
         );
+        let (trusses, roads_sheet) = (&self.bridge_trusses, &self.roads_sheet);
+        self.bridges.render_chunks(
+            chunks,
+            |_| 1,
+            |chunk, _| {
+                for (x, y, i) in chunks::chunk_tiles(chunk) {
+                    if let Some(cell) = trusses[i] {
+                        roads_sheet.draw_tile(cell, x, y);
+                    }
+                }
+            },
+        );
+    }
+
+    // Tints one tile, under the map camera set by `draw`.
+    pub fn draw_highlight(&self, camera: &Camera, screen: Vec2, area: Rect, tile: (i32, i32), buildable: bool) {
+        set_camera(&camera.camera_2d(screen, area));
+        let color = if buildable { BUILD_OK } else { BUILD_BLOCKED };
+        let (x, y) = (tile.0 as f32 * TILE_SIZE, tile.1 as f32 * TILE_SIZE);
+        draw_rectangle(x, y, TILE_SIZE, TILE_SIZE, color);
     }
 
     pub fn draw(&self, camera: &Camera, screen: Vec2, area: Rect, grid_visible: bool) {
@@ -102,6 +154,7 @@ impl MapView {
         let perspective = camera.perspective(viewport);
         trees::draw_shadows(&self.nature, &self.trees, visible);
         trees::draw_trunks(&self.nature, &self.forest_trunks, visible, &perspective);
+        self.bridges.draw_raised(visible, &perspective, BRIDGE_HEIGHT);
         self.canopy.draw_raised(visible, &perspective, trees::TREE_HEIGHT);
         trees::draw_trees(&self.nature, &self.trees, visible, &perspective);
 
