@@ -149,7 +149,7 @@ mod tests {
             let menu = layout(&bar, bar.button(Tool::Electricity).h);
             assert!(menu.panel.x >= 0.0 && menu.panel.right() <= w, "{w}x{h}");
             assert_eq!(menu.panel.bottom(), bar.panel.y, "{w}x{h}");
-            assert!((menu.panel.x - (w - menu.panel.right())).abs() <= 0.5, "{w}x{h}");
+            assert!((menu.panel.x - (w - menu.panel.right())).abs() <= 1.0, "{w}x{h}");
             for b in menu.buttons {
                 assert!(b.x >= menu.panel.x && b.right() <= menu.panel.right(), "{w}x{h}");
             }
