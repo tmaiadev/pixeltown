@@ -1,3 +1,4 @@
+mod submenu;
 mod toolbar;
 mod top_bar;
 
@@ -16,6 +17,7 @@ use crate::screen::{self, set_internal_camera};
 use crate::utils::assets::{load_font, load_icons};
 use crate::utils::seed::time_seed;
 use crate::utils::spritesheet::Spritesheet;
+use submenu::{PowerItem, SubmenuView};
 use toolbar::{Tool, ToolbarView};
 use top_bar::{Speed, Stats, TopBarView};
 
@@ -33,6 +35,7 @@ pub struct GameplayScene {
     tool: Option<Tool>,
     focus: Tool,
     focus_visible: bool,
+    power_focus: PowerItem,
     cursor: Option<(i32, i32)>,
     pointer_cursor: bool,
     drag_from: Option<(i32, i32)>,
@@ -59,6 +62,7 @@ impl GameplayScene {
             tool: None,
             focus: Tool::Roads,
             focus_visible: false,
+            power_focus: PowerItem::PowerLine,
             cursor: None,
             pointer_cursor: false,
             drag_from: None,
@@ -90,6 +94,11 @@ impl GameplayScene {
     fn toggle_tool(&mut self, tool: Tool) {
         self.tool = (self.tool != Some(tool)).then_some(tool);
         self.cursor = None;
+        self.power_focus = PowerItem::PowerLine;
+    }
+
+    fn submenu_open(&self) -> bool {
+        self.tool == Some(Tool::Electricity)
     }
 
     fn building(&self) -> bool {
@@ -157,6 +166,11 @@ impl GameplayScene {
         let toolbar = toolbar::layout(viewport.x, viewport.y);
         for action in NAVIGATION {
             if input.pressed_nav(action) {
+                if self.submenu_open() {
+                    self.power_focus = submenu::move_focus(self.power_focus, action);
+                    self.focus_visible = true;
+                    continue;
+                }
                 if self.building() {
                     self.move_cursor(action, viewport);
                     continue;
@@ -171,7 +185,9 @@ impl GameplayScene {
         }
 
         if input.pressed(Action::Confirm) {
-            if self.building() {
+            if self.submenu_open() {
+                // Power items have no effect yet.
+            } else if self.building() {
                 self.apply_tool();
             } else {
                 self.toggle_tool(self.focus);
@@ -183,7 +199,11 @@ impl GameplayScene {
         }
         if input.pointer_clicked() {
             let Some(pointer) = input.pointer() else { return };
-            if top_bar::SPEED_BUTTON.contains(pointer) {
+            let submenu = self.submenu_open().then(|| self.submenu(&toolbar));
+            if let Some(item) = submenu.as_ref().and_then(|m| m.item_at(pointer)) {
+                self.power_focus = item;
+            } else if submenu.is_some_and(|m| m.contains(pointer)) {
+            } else if top_bar::SPEED_BUTTON.contains(pointer) {
                 self.stats.speed = self.stats.speed.next();
             } else if let Some(tool) = toolbar.tool_at(pointer) {
                 self.focus = tool;
@@ -194,6 +214,10 @@ impl GameplayScene {
                 self.drag_from = self.cursor;
             }
         }
+    }
+
+    fn submenu(&self, toolbar: &toolbar::Toolbar) -> submenu::Submenu {
+        submenu::layout(toolbar, toolbar.button(Tool::Electricity))
     }
 
     fn draw_ui(&self, input: &Input, viewport: Vec2) {
@@ -219,6 +243,16 @@ impl GameplayScene {
             demand: DEMAND,
         };
         toolbar::draw(&toolbar, &view, viewport.x);
+
+        if self.submenu_open() {
+            let menu = self.submenu(&toolbar);
+            let view = SubmenuView {
+                icons: &self.icons,
+                hovered: pointer.and_then(|p| menu.item_at(p)),
+                focus: self.focus_visible.then_some(self.power_focus),
+            };
+            submenu::draw(&menu, &view);
+        }
     }
 }
 
