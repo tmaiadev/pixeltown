@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use macroquad::prelude::*;
 
-use super::{gameplay::GameplayScene, Scene};
+use super::{gameplay::{self, GameplayScene}, Scene};
 use crate::input::{Action, Device, Input};
 use crate::map::{rng::Rng, save, Map, TerrainType};
 use crate::map_view::camera::{self, Camera, Motion, MAP_CENTER};
@@ -197,7 +197,10 @@ impl Scene for TerrainScene {
         };
         self.camera.update(dt, viewport, motion);
         if self.phase == Phase::FadingOut {
-            let home = (MAP_CENTER, GameplayScene::ZOOM);
+            // Gameplay centers the map between its top bar and toolbar, not on the screen, so
+            // land the glide with the same offset to avoid a jump when the scene switches.
+            let offset = (viewport / 2.0 - gameplay::map_area(viewport).center()) / GameplayScene::ZOOM;
+            let home = (MAP_CENTER + offset, GameplayScene::ZOOM);
             let (center, zoom) = camera::glide(self.departure, home, self.fade_out.progress());
             self.camera.set_view(center, zoom, viewport);
         }
@@ -215,7 +218,8 @@ impl Scene for TerrainScene {
     fn draw(&self, input: &Input) {
         clear_background(BLACK);
         let viewport = screen::viewport();
-        self.view.draw(&self.camera, viewport, self.grid_visible);
+        let area = Rect::new(0.0, 0.0, viewport.x, viewport.y);
+        self.view.draw(&self.camera, viewport, area, self.grid_visible);
 
         set_internal_camera();
         let ui_alpha = match self.phase {

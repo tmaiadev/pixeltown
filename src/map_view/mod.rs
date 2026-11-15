@@ -92,8 +92,9 @@ impl MapView {
         );
     }
 
-    pub fn draw(&self, camera: &Camera, viewport: Vec2, grid_visible: bool) {
-        set_camera(&camera.camera_2d(viewport));
+    pub fn draw(&self, camera: &Camera, screen: Vec2, area: Rect, grid_visible: bool) {
+        set_camera(&camera.camera_2d(screen, area));
+        let viewport = area.size();
 
         let visible = camera.visible_tiles(viewport);
         self.ground.draw(visible, self.water.frame());

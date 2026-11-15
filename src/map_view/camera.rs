@@ -95,10 +95,13 @@ impl Camera {
         self.center = clamp_center(self.center, viewport / self.zoom);
     }
 
-    pub fn camera_2d(&self, viewport: Vec2) -> Camera2D {
+    // Projects onto the whole screen with the view fitted to `area`, the part the map is visible in.
+    // Snapping the view's corner, not its center, keeps odd-sized areas from clipping the map edge.
+    pub fn camera_2d(&self, screen: Vec2, area: Rect) -> Camera2D {
+        let corner = ((self.center - area.size() / 2.0 / self.zoom) * self.zoom).round() / self.zoom;
         Camera2D {
-            zoom: 2.0 * self.zoom / viewport,
-            target: self.view_center(),
+            zoom: 2.0 * self.zoom / screen,
+            target: corner + (screen / 2.0 - area.point()) / self.zoom,
             ..Default::default()
         }
     }
@@ -284,6 +287,22 @@ mod tests {
         let TileRect { x0, y0, x1, y1 } = far.visible_tiles(VIEWPORT);
         assert_eq!((x0, x1), (0, MAP_SIZE));
         assert!(y1 - y0 < MAP_SIZE);
+    }
+
+    #[test]
+    fn panned_to_a_corner_the_map_corner_meets_the_area_corner() {
+        for area in [Rect::new(0.0, 16.0, 853.0, 427.0), Rect::new(0.0, 16.0, 852.0, 428.0)] {
+            let mut camera = Camera::new(area.size());
+            let projection = |camera: &Camera| camera.camera_2d(VIEWPORT, area);
+            let to_screen = |camera: &Camera, world: Vec2| {
+                (world - projection(camera).target) * camera.zoom() + VIEWPORT / 2.0
+            };
+            camera.set_view(Vec2::ZERO, 1.0, area.size());
+            assert_eq!(to_screen(&camera, Vec2::ZERO), area.point());
+            camera.set_view(Vec2::splat(MAP_PIXELS), 1.0, area.size());
+            let far = area.point() + area.size();
+            assert_eq!(to_screen(&camera, Vec2::splat(MAP_PIXELS)), far);
+        }
     }
 
     #[test]
