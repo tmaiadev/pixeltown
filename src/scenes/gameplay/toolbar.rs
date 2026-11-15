@@ -236,7 +236,7 @@ pub fn draw(toolbar: &Toolbar, view: &ToolbarView, screen_width: f32) {
             None => draw_demand(rect, view.demand),
         }
     }
-    if let Some(tool) = view.hovered.or(view.focus).filter(|_| view.tooltip) {
+    if let Some(tool) = view.hovered.or(view.focus).filter(|&t| view.tooltip && view.selected != Some(t)) {
         draw_tooltip(tool.label(), toolbar.button(tool).center().x, toolbar.panel.y, view.font, screen_width);
     }
 }
