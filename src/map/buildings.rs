@@ -1,6 +1,7 @@
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BuildingKind {
     CoalPlant,
+    OilPlant,
 }
 
 impl BuildingKind {
@@ -8,6 +9,7 @@ impl BuildingKind {
     pub const fn footprint(self) -> (usize, usize) {
         match self {
             BuildingKind::CoalPlant => (5, 5),
+            BuildingKind::OilPlant => (5, 6),
         }
     }
 

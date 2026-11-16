@@ -1,5 +1,6 @@
 mod coal_plant;
 mod effects;
+mod oil_plant;
 
 use macroquad::prelude::*;
 
@@ -18,6 +19,7 @@ const NORTH: f32 = 0.9;
 const WEST: f32 = 0.95;
 const EAST: f32 = 0.62;
 const SOUTH: f32 = 0.72;
+const BASE: Color = Color::new(206.0 / 255.0, 208.0 / 255.0, 210.0 / 255.0, 1.0);
 const GLOW: Color = Color::new(1.0, 0.55, 0.15, 0.2);
 
 // A box rising from the ground. Its sprites are all pieces of the buildings sheet.
@@ -54,6 +56,7 @@ pub struct Model {
 fn model(kind: BuildingKind) -> &'static Model {
     match kind {
         BuildingKind::CoalPlant => &coal_plant::MODEL,
+        BuildingKind::OilPlant => &oil_plant::MODEL,
     }
 }
 
@@ -212,6 +215,8 @@ fn draw_block(sheet: &Spritesheet, block: &Block, origin: Vec2, perspective: &Pe
 fn draw_stack(sheet: &Spritesheet, stack: &Stack, origin: Vec2, perspective: &Perspective) {
     let ground = origin + stack.base;
     let top = lifted(ground, stack.height, perspective);
+    // Round footprint, so a wide body reads as a cylinder rather than a flat ribbon.
+    draw_circle(ground.x, ground.y, stack.body.w / 2.0, BASE);
     draw_strip(sheet.texture(), Spritesheet::inset(stack.body), ground, top, stack.body.w);
     let half = stack.cap.size() / 2.0;
     sheet.draw_sprite(stack.cap, Rect::new(top.x - half.x, top.y - half.y, stack.cap.w, stack.cap.h), WHITE);
@@ -239,6 +244,8 @@ fn draw_plume(sheet: &Spritesheet, stack: &Stack, origin: Vec2, perspective: &Pe
 mod tests {
     use super::*;
 
+    const KINDS: [BuildingKind; 2] = [BuildingKind::CoalPlant, BuildingKind::OilPlant];
+
     fn building() -> Building {
         Building { kind: BuildingKind::CoalPlant, x: 100, y: 100 }
     }
@@ -249,9 +256,10 @@ mod tests {
 
     #[test]
     fn model_parts_stay_inside_the_footprint() {
-        let (w, h) = BuildingKind::CoalPlant.footprint();
+      for kind in KINDS {
+        let (w, h) = kind.footprint();
         let footprint = Rect::new(0.0, 0.0, w as f32 * TILE_SIZE, h as f32 * TILE_SIZE);
-        let model = model(BuildingKind::CoalPlant);
+        let model = model(kind);
         assert_eq!(model.yard.size(), footprint.size());
         for block in model.blocks {
             assert!(footprint.contains(block.base.point()) && footprint.contains(block.base.point() + block.base.size()));
@@ -263,13 +271,16 @@ mod tests {
             let radius = stack.body.w / 2.0;
             assert!(footprint.contains(stack.base - radius) && footprint.contains(stack.base + radius));
         }
+      }
     }
 
     #[test]
     fn blocks_do_not_overlap() {
-        let blocks = model(BuildingKind::CoalPlant).blocks;
-        for (i, a) in blocks.iter().enumerate() {
-            assert!(blocks[i + 1..].iter().all(|b| !a.base.overlaps(&b.base)));
+        for kind in KINDS {
+            let blocks = model(kind).blocks;
+            for (i, a) in blocks.iter().enumerate() {
+                assert!(blocks[i + 1..].iter().all(|b| !a.base.overlaps(&b.base)));
+            }
         }
     }
 

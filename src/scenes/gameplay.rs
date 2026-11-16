@@ -118,7 +118,7 @@ impl GameplayScene {
         self.building() && self.placing.and_then(PowerItem::building).is_none()
     }
 
-    // Only power lines and the coal plant can be built so far; the other plants have no effect yet.
+    // Only power lines and the coal and oil plants can be built so far; the other plants have no effect yet.
     fn pick_power_item(&mut self, item: PowerItem) {
         self.power_focus = item;
         if item == PowerItem::PowerLine || item.building().is_some() {
