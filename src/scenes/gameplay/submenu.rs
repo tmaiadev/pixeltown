@@ -65,6 +65,7 @@ impl PowerItem {
         match self {
             PowerItem::Coal => Some(BuildingKind::CoalPlant),
             PowerItem::Oil => Some(BuildingKind::OilPlant),
+            PowerItem::Gas => Some(BuildingKind::GasPlant),
             _ => None,
         }
     }
@@ -174,9 +175,9 @@ mod tests {
     }
 
     #[test]
-    fn only_the_coal_and_oil_plants_build_a_building() {
+    fn only_the_coal_oil_and_gas_plants_build_a_building() {
         let builders: Vec<_> = PowerItem::ALL.into_iter().filter(|i| i.building().is_some()).collect();
-        assert_eq!(builders, vec![PowerItem::Coal, PowerItem::Oil]);
+        assert_eq!(builders, vec![PowerItem::Coal, PowerItem::Oil, PowerItem::Gas]);
     }
 
     #[test]

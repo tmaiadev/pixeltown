@@ -2,6 +2,7 @@
 pub enum BuildingKind {
     CoalPlant,
     OilPlant,
+    GasPlant,
 }
 
 impl BuildingKind {
@@ -10,6 +11,7 @@ impl BuildingKind {
         match self {
             BuildingKind::CoalPlant => (5, 5),
             BuildingKind::OilPlant => (5, 6),
+            BuildingKind::GasPlant => (6, 4),
         }
     }
 

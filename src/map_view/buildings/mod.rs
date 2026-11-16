@@ -1,5 +1,6 @@
 mod coal_plant;
 mod effects;
+mod gas_plant;
 mod oil_plant;
 
 use macroquad::prelude::*;
@@ -57,6 +58,7 @@ fn model(kind: BuildingKind) -> &'static Model {
     match kind {
         BuildingKind::CoalPlant => &coal_plant::MODEL,
         BuildingKind::OilPlant => &oil_plant::MODEL,
+        BuildingKind::GasPlant => &gas_plant::MODEL,
     }
 }
 
@@ -244,7 +246,7 @@ fn draw_plume(sheet: &Spritesheet, stack: &Stack, origin: Vec2, perspective: &Pe
 mod tests {
     use super::*;
 
-    const KINDS: [BuildingKind; 2] = [BuildingKind::CoalPlant, BuildingKind::OilPlant];
+    const KINDS: [BuildingKind; 3] = [BuildingKind::CoalPlant, BuildingKind::OilPlant, BuildingKind::GasPlant];
 
     fn building() -> Building {
         Building { kind: BuildingKind::CoalPlant, x: 100, y: 100 }
