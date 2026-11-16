@@ -45,7 +45,7 @@ fn ground(x: u16, y: u16) -> Vec2 {
 }
 
 // `items` must be in row-major order.
-fn shown<T>(items: &[T], position: impl Fn(&T) -> (u16, u16) + Copy, visible: TileRect) -> impl Iterator<Item = &T> {
+pub(super) fn shown<T>(items: &[T], position: impl Fn(&T) -> (u16, u16) + Copy, visible: TileRect) -> impl Iterator<Item = &T> {
     let TileRect { x0, y0, x1, y1 } = visible.grow(MARGIN);
     let start = items.partition_point(|t| (position(t).1 as usize) < y0);
     items[start..]

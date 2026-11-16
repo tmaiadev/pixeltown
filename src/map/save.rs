@@ -165,6 +165,7 @@ pub fn decode(text: &str) -> Result<Map, SaveError> {
         river,
         features: cells(&file.features, parse_feature)?,
         roads: vec![None; MAP_SIZE * MAP_SIZE],
+        power_lines: vec![None; MAP_SIZE * MAP_SIZE],
     })
 }
 

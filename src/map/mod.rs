@@ -2,6 +2,7 @@ pub mod autotile;
 pub mod rng;
 pub mod save;
 
+use autotile::Wiring;
 use rng::{fbm, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -59,6 +60,13 @@ pub enum Road {
     Bridge(Axis),
 }
 
+// A power line bridge is a power line over water; it only runs straight along its axis.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PowerLine {
+    Pole,
+    Bridge(Axis),
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TerrainType {
@@ -104,6 +112,7 @@ pub struct Map {
     river: Vec<bool>,
     features: Vec<Option<Feature>>,
     roads: Vec<Option<Road>>,
+    power_lines: Vec<Option<PowerLine>>,
 }
 
 impl Map {
@@ -125,6 +134,7 @@ impl Map {
             river,
             features,
             roads: vec![None; MAP_SIZE * MAP_SIZE],
+            power_lines: vec![None; MAP_SIZE * MAP_SIZE],
         }
     }
 
@@ -142,6 +152,55 @@ impl Map {
 
     pub fn road(&self, x: usize, y: usize) -> Option<Road> {
         self.roads[idx(x, y)]
+    }
+
+    pub fn power_line(&self, x: usize, y: usize) -> Option<PowerLine> {
+        self.power_lines[idx(x, y)]
+    }
+
+    // The axis a power line bridge placed on this water tile would run along: it must continue
+    // a power line coming from a neighbor, and a neighbor that only wires along one axis can only be extended straight.
+    fn power_bridge_axis(&self, x: usize, y: usize) -> Option<Axis> {
+        let (x, y) = (x as i32, y as i32);
+        [(0, -1), (1, 0), (0, 1), (-1, 0)].into_iter().find_map(|(dx, dy)| {
+            let (nx, ny) = (x + dx, y + dy);
+            if !Self::in_bounds(nx, ny) {
+                return None;
+            }
+            let axis = if dx == 0 { Axis::Vertical } else { Axis::Horizontal };
+            match autotile::wiring(self, nx as usize, ny as usize)? {
+                Wiring::Span(a) if a != axis => None,
+                _ => Some(axis),
+            }
+        })
+    }
+
+    // Power lines go over streets and on land; over water they need a neighboring power line and no bridge.
+    pub fn can_build_power_line(&self, x: i32, y: i32) -> bool {
+        if !Self::in_bounds(x, y) {
+            return false;
+        }
+        let (x, y) = (x as usize, y as usize);
+        if self.power_line(x, y).is_some() || self.feature(x, y) == Some(Feature::Rock) {
+            return false;
+        }
+        self.terrain(x, y) != Terrain::Water || (self.road(x, y).is_none() && self.power_bridge_axis(x, y).is_some())
+    }
+
+    // Replaces trees and forests; returns whether a power line was placed.
+    pub fn build_power_line(&mut self, x: i32, y: i32) -> bool {
+        if !self.can_build_power_line(x, y) {
+            return false;
+        }
+        let (ux, uy) = (x as usize, y as usize);
+        let line = match self.power_bridge_axis(ux, uy) {
+            Some(axis) if self.terrain(ux, uy) == Terrain::Water => PowerLine::Bridge(axis),
+            _ => PowerLine::Pole,
+        };
+        let i = idx(ux, uy);
+        self.power_lines[i] = Some(line);
+        self.features[i] = None;
+        true
     }
 
     // The axis a bridge placed on this water tile would run along: it must continue a road
@@ -169,7 +228,7 @@ impl Map {
         if self.road(x, y).is_some() || self.feature(x, y) == Some(Feature::Rock) {
             return false;
         }
-        self.terrain(x, y) != Terrain::Water || self.bridge_axis(x, y).is_some()
+        self.terrain(x, y) != Terrain::Water || (self.power_line(x, y).is_none() && self.bridge_axis(x, y).is_some())
     }
 
     // Replaces trees and forests; returns whether a road was placed.
@@ -190,17 +249,17 @@ impl Map {
     pub fn can_bulldoze(&self, x: i32, y: i32) -> bool {
         Self::in_bounds(x, y) && {
             let (x, y) = (x as usize, y as usize);
-            self.road(x, y).is_some() || self.feature(x, y).is_some()
+            self.power_line(x, y).is_some() || self.road(x, y).is_some() || self.feature(x, y).is_some()
         }
     }
 
-    // Removes the road, or else the tree, forest or rock, on the tile; returns whether anything was removed.
+    // Removes what is on top of the tile (a power line), else the road, else the tree, forest or rock; returns whether anything was removed.
     pub fn bulldoze(&mut self, x: i32, y: i32) -> bool {
         if !self.can_bulldoze(x, y) {
             return false;
         }
         let i = idx(x as usize, y as usize);
-        if self.roads[i].take().is_none() {
+        if self.power_lines[i].take().is_none() && self.roads[i].take().is_none() {
             self.features[i] = None;
         }
         true
@@ -493,6 +552,81 @@ mod tests {
         assert!(map.bulldoze(x as i32, y as i32));
         assert_eq!(map.road(x, y), None);
         assert!(!map.bulldoze(-1, 0));
+    }
+
+    fn blank_land(x: usize, y: usize, terrain: Terrain) -> Map {
+        let mut map = Map::generate(TerrainType::Inland, 42);
+        map.features = vec![None; MAP_SIZE * MAP_SIZE];
+        map.roads = vec![None; MAP_SIZE * MAP_SIZE];
+        for dy in 0..3 {
+            for dx in 0..4 {
+                map.tiles[idx(x + dx, y + dy - 1)] = terrain;
+            }
+        }
+        map
+    }
+
+    #[test]
+    fn power_lines_replace_trees_but_not_rocks() {
+        let mut map = blank_land(10, 10, Terrain::Grass);
+        map.features[idx(10, 10)] = Some(Feature::Tree);
+        map.features[idx(11, 10)] = Some(Feature::Rock);
+        assert!(map.build_power_line(10, 10));
+        assert_eq!(map.power_line(10, 10), Some(PowerLine::Pole));
+        assert!(map.feature(10, 10).is_none());
+        assert!(!map.can_build_power_line(10, 10));
+        assert!(!map.can_build_power_line(11, 10));
+        assert!(!map.can_build_power_line(-1, 0));
+    }
+
+    #[test]
+    fn roads_and_power_lines_share_a_tile_in_either_order() {
+        let mut map = blank_land(10, 10, Terrain::Grass);
+        assert!(map.build_road(10, 10));
+        assert!(map.build_power_line(10, 10));
+        assert!(map.build_power_line(11, 10));
+        assert!(map.build_road(11, 10));
+        for x in [10, 11] {
+            assert_eq!(map.road(x, 10), Some(Road::Street));
+            assert_eq!(map.power_line(x, 10), Some(PowerLine::Pole));
+        }
+    }
+
+    #[test]
+    fn power_line_bridges_start_from_a_power_line_and_only_extend_straight() {
+        let mut map = blank_land(10, 10, Terrain::Water);
+        map.tiles[idx(10, 10)] = Terrain::Grass;
+        assert!(!map.can_build_power_line(11, 10));
+        map.build_power_line(10, 10);
+        assert!(map.build_power_line(11, 10));
+        assert_eq!(map.power_line(11, 10), Some(PowerLine::Bridge(Axis::Horizontal)));
+        assert!(!map.can_build_power_line(11, 11));
+        assert!(map.can_build_power_line(12, 10));
+    }
+
+    #[test]
+    fn power_lines_and_road_bridges_exclude_each_other_over_water() {
+        let mut map = blank_land(10, 10, Terrain::Water);
+        map.tiles[idx(10, 10)] = Terrain::Grass;
+        map.build_road(10, 10);
+        map.build_power_line(10, 10);
+        assert!(map.build_road(11, 10));
+        assert!(!map.can_build_power_line(11, 10));
+        map.bulldoze(11, 10);
+        assert!(map.build_power_line(11, 10));
+        assert!(!map.can_build_road(11, 10));
+    }
+
+    #[test]
+    fn bulldozing_removes_the_top_layer_first() {
+        let mut map = blank_land(10, 10, Terrain::Grass);
+        map.build_road(10, 10);
+        map.build_power_line(10, 10);
+        assert!(map.bulldoze(10, 10));
+        assert_eq!((map.road(10, 10), map.power_line(10, 10)), (Some(Road::Street), None));
+        assert!(map.bulldoze(10, 10));
+        assert_eq!(map.road(10, 10), None);
+        assert!(!map.bulldoze(10, 10));
     }
 
     fn land_ratio(map: &Map) -> f32 {

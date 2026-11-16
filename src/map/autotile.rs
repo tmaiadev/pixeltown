@@ -1,4 +1,4 @@
-use super::{Axis, Feature, Map, Road, Terrain, MAP_SIZE};
+use super::{Axis, Feature, Map, PowerLine, Road, Terrain, MAP_SIZE};
 
 pub const SHEET_COLUMNS: usize = 16;
 const GRASS_VARIANTS: usize = 4;
@@ -212,6 +212,95 @@ pub fn road_cells(map: &Map) -> Vec<Option<SpriteCell>> {
     per_tile(|x, y| road_cell(map, x, y))
 }
 
+// How a power line is held up: a pole in the middle of its tile, or a wire spanning the tile
+// along an axis (over water, or over a street, which it crosses).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Wiring {
+    Pole,
+    Span(Axis),
+}
+
+fn perpendicular(axis: Axis) -> Axis {
+    match axis {
+        Axis::Horizontal => Axis::Vertical,
+        Axis::Vertical => Axis::Horizontal,
+    }
+}
+
+// Streets run horizontally only when they link sideways and not up or down; the rest count as vertical, like their sprite.
+fn road_axis(map: &Map, x: usize, y: usize) -> Axis {
+    let linked = |dx, dy| linked(map, x, y, dx, dy);
+    let horizontal = linked(1, 0) || linked(-1, 0);
+    let vertical = linked(0, -1) || linked(0, 1);
+    if horizontal && !vertical {
+        Axis::Horizontal
+    } else {
+        Axis::Vertical
+    }
+}
+
+// Whatever sits over a street takes no tile space, so it crosses the street instead of following it.
+pub fn wiring(map: &Map, x: usize, y: usize) -> Option<Wiring> {
+    Some(match map.power_line(x, y)? {
+        PowerLine::Bridge(axis) => Wiring::Span(axis),
+        PowerLine::Pole if map.road(x, y).is_some() => Wiring::Span(perpendicular(road_axis(map, x, y))),
+        PowerLine::Pole => Wiring::Pole,
+    })
+}
+
+// The wiring of the neighbor in direction (dx, dy) when the wire at (x, y) reaches it.
+fn wired(map: &Map, x: usize, y: usize, dx: i32, dy: i32) -> Option<Wiring> {
+    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+    if !Map::in_bounds(nx, ny) {
+        return None;
+    }
+    let axis = if dx == 0 { Axis::Vertical } else { Axis::Horizontal };
+    let reaches = |wiring| !matches!(wiring, Wiring::Span(a) if a != axis);
+    let (here, there) = (wiring(map, x, y)?, wiring(map, nx as usize, ny as usize)?);
+    (reaches(here) && reaches(there)).then_some(there)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WireCell {
+    pub x: u16,
+    pub y: u16,
+    pub wiring: Wiring,
+    // Wiring of the neighbor east and south of it, when linked. Each wire is owned by one of its ends, so it is drawn once.
+    pub east: Option<Wiring>,
+    pub south: Option<Wiring>,
+    // N/E/S/W bits of the sides a spanning wire runs out of the tile without a neighbor to link to.
+    pub open: u8,
+}
+
+// Row-major.
+pub fn wire_cells(map: &Map) -> Vec<WireCell> {
+    tiles()
+        .filter_map(|(x, y)| {
+            let wiring = wiring(map, x, y)?;
+            let open = match wiring {
+                Wiring::Pole => 0,
+                Wiring::Span(axis) => {
+                    let ends = match axis {
+                        Axis::Vertical => [(0, -1, N), (0, 1, S)],
+                        Axis::Horizontal => [(1, 0, E), (-1, 0, W)],
+                    };
+                    ends.into_iter()
+                        .filter(|&(dx, dy, _)| wired(map, x, y, dx, dy).is_none())
+                        .fold(0, |open, (_, _, bit)| open | bit)
+                }
+            };
+            Some(WireCell {
+                x: x as u16,
+                y: y as u16,
+                wiring,
+                east: wired(map, x, y, 1, 0),
+                south: wired(map, x, y, 0, 1),
+                open,
+            })
+        })
+        .collect()
+}
+
 pub fn forest_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
     if map.feature(x, y) != Some(Feature::Forest) {
         return None;
@@ -344,7 +433,61 @@ mod tests {
             river,
             features,
             roads: vec![None; MAP_SIZE * MAP_SIZE],
+            power_lines: vec![None; MAP_SIZE * MAP_SIZE],
         }
+    }
+
+    fn cell_at(map: &Map, x: u16, y: u16) -> WireCell {
+        wire_cells(map).into_iter().find(|c| (c.x, c.y) == (x, y)).unwrap()
+    }
+
+    #[test]
+    fn poles_link_to_the_poles_east_and_south() {
+        let mut map = map_from(&["###", "###"]);
+        map.build_power_line(0, 0);
+        let alone = WireCell { x: 0, y: 0, wiring: Wiring::Pole, east: None, south: None, open: 0 };
+        assert_eq!(wire_cells(&map), vec![alone]);
+        map.build_power_line(1, 0);
+        map.build_power_line(0, 1);
+        let cells = wire_cells(&map);
+        assert_eq!(cells.len(), 3);
+        assert_eq!((cells[0].east, cells[0].south), (Some(Wiring::Pole), Some(Wiring::Pole)));
+        assert_eq!((cells[1].east, cells[1].south), (None, None));
+    }
+
+    #[test]
+    fn power_lines_cross_streets_at_a_right_angle() {
+        let mut map = map_from(&["###", "###", "###"]);
+        for x in 0..3 {
+            map.build_road(x, 1);
+        }
+        map.build_power_line(1, 0);
+        map.build_power_line(1, 1);
+        map.build_power_line(1, 2);
+        assert_eq!(cell_at(&map, 1, 1).wiring, Wiring::Span(Axis::Vertical));
+        assert_eq!(cell_at(&map, 1, 1).south, Some(Wiring::Pole));
+        assert_eq!(cell_at(&map, 1, 0).south, Some(Wiring::Span(Axis::Vertical)));
+
+        let mut map = map_from(&["###", "###", "###"]);
+        for y in 0..3 {
+            map.build_road(1, y);
+        }
+        map.build_power_line(1, 1);
+        assert_eq!(cell_at(&map, 1, 1).wiring, Wiring::Span(Axis::Horizontal));
+        assert_eq!(cell_at(&map, 1, 1).open, E | W);
+    }
+
+    #[test]
+    fn power_lines_over_water_have_no_poles_and_link_both_ends() {
+        let mut map = map_from(&["#~~#"]);
+        map.build_power_line(0, 0);
+        map.build_power_line(1, 0);
+        map.build_power_line(2, 0);
+        map.build_power_line(3, 0);
+        let cells = wire_cells(&map);
+        assert_eq!(cells[1].wiring, Wiring::Span(Axis::Horizontal));
+        assert_eq!(cells[1].open, 0);
+        assert_eq!((cells[0].east, cells[3].wiring), (Some(Wiring::Span(Axis::Horizontal)), Wiring::Pole));
     }
 
     #[test]

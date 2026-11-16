@@ -1,5 +1,6 @@
 pub mod camera;
 mod chunks;
+mod power_lines;
 mod trees;
 
 use macroquad::prelude::*;
@@ -29,6 +30,7 @@ pub struct MapView {
     roads: Vec<Option<SpriteCell>>,
     bridge_trusses: Vec<Option<SpriteCell>>,
     trees: Vec<autotile::TreeCell>,
+    poles: Vec<autotile::WireCell>,
     forest_trunks: Vec<(u16, u16)>,
     ground: ChunkCache,
     canopy: ChunkCache,
@@ -48,6 +50,7 @@ impl MapView {
             roads: Vec::new(),
             bridge_trusses: Vec::new(),
             trees: Vec::new(),
+            poles: Vec::new(),
             forest_trunks: Vec::new(),
             ground: ChunkCache::new(),
             canopy: ChunkCache::new(),
@@ -64,6 +67,7 @@ impl MapView {
         self.roads = autotile::road_cells(map);
         self.bridge_trusses = autotile::bridge_truss_cells(map);
         self.trees = autotile::tree_cells(map);
+        self.poles = autotile::wire_cells(map);
         self.forest_trunks = autotile::forest_trunks(map);
         self.bake(0..CHUNKS * CHUNKS);
     }
@@ -75,6 +79,7 @@ impl MapView {
         self.roads = autotile::road_cells(map);
         self.bridge_trusses = autotile::bridge_truss_cells(map);
         self.trees = autotile::tree_cells(map);
+        self.poles = autotile::wire_cells(map);
         self.forest_trunks = autotile::forest_trunks(map);
         let mut dirty: Vec<usize> = tiles.iter().flat_map(|&(x, y)| chunks::chunks_around(x, y)).collect();
         dirty.sort_unstable();
@@ -153,10 +158,12 @@ impl MapView {
 
         let perspective = camera.perspective(viewport);
         trees::draw_shadows(&self.nature, &self.trees, visible);
+        power_lines::draw_shadows(&self.poles, visible);
         trees::draw_trunks(&self.nature, &self.forest_trunks, visible, &perspective);
         self.bridges.draw_raised(visible, &perspective, BRIDGE_HEIGHT);
         self.canopy.draw_raised(visible, &perspective, trees::TREE_HEIGHT);
         trees::draw_trees(&self.nature, &self.trees, visible, &perspective);
+        power_lines::draw_poles(&self.poles, visible, &perspective);
 
         if grid_visible {
             draw_grid(visible, camera.zoom());

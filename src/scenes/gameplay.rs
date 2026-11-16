@@ -36,6 +36,7 @@ pub struct GameplayScene {
     focus: Tool,
     focus_visible: bool,
     power_focus: PowerItem,
+    power_line: bool,
     cursor: Option<(i32, i32)>,
     pointer_cursor: bool,
     drag_from: Option<(i32, i32)>,
@@ -63,6 +64,7 @@ impl GameplayScene {
             focus: Tool::Roads,
             focus_visible: false,
             power_focus: PowerItem::PowerLine,
+            power_line: false,
             cursor: None,
             pointer_cursor: false,
             drag_from: None,
@@ -95,14 +97,28 @@ impl GameplayScene {
         self.tool = (self.tool != Some(tool)).then_some(tool);
         self.cursor = None;
         self.power_focus = PowerItem::PowerLine;
+        self.power_line = false;
     }
 
     fn submenu_open(&self) -> bool {
-        self.tool == Some(Tool::Electricity)
+        self.tool == Some(Tool::Electricity) && !self.power_line
     }
 
     fn building(&self) -> bool {
-        matches!(self.tool, Some(Tool::Roads | Tool::Bulldoze))
+        match self.tool {
+            Some(Tool::Roads | Tool::Bulldoze) => true,
+            Some(Tool::Electricity) => self.power_line,
+            _ => false,
+        }
+    }
+
+    // Only power lines can be built so far; the plants have no effect yet.
+    fn pick_power_item(&mut self, item: PowerItem) {
+        self.power_focus = item;
+        if item == PowerItem::PowerLine {
+            self.power_line = true;
+            self.cursor = None;
+        }
     }
 
     fn apply_tool(&mut self) {
@@ -114,6 +130,7 @@ impl GameplayScene {
         let changed = match self.tool {
             Some(Tool::Roads) => self.map.build_road(x, y),
             Some(Tool::Bulldoze) => self.map.bulldoze(x, y),
+            Some(Tool::Electricity) => self.map.build_power_line(x, y),
             _ => false,
         };
         if changed {
@@ -125,6 +142,7 @@ impl GameplayScene {
         match self.tool {
             Some(Tool::Roads) => self.map.can_build_road(x, y),
             Some(Tool::Bulldoze) => self.map.can_bulldoze(x, y),
+            Some(Tool::Electricity) => self.map.can_build_power_line(x, y),
             _ => false,
         }
     }
@@ -186,7 +204,7 @@ impl GameplayScene {
 
         if input.pressed(Action::Confirm) {
             if self.submenu_open() {
-                // Power items have no effect yet.
+                self.pick_power_item(self.power_focus);
             } else if self.building() {
                 self.apply_tool();
             } else {
@@ -201,7 +219,7 @@ impl GameplayScene {
             let Some(pointer) = input.pointer() else { return };
             let submenu = self.submenu_open().then(|| self.submenu(&toolbar));
             if let Some(item) = submenu.as_ref().and_then(|m| m.item_at(pointer)) {
-                self.power_focus = item;
+                self.pick_power_item(item);
             } else if submenu.is_some_and(|m| m.contains(pointer)) {
             } else if top_bar::SPEED_BUTTON.contains(pointer) {
                 self.stats.speed = self.stats.speed.next();
@@ -261,7 +279,14 @@ impl GameplayScene {
 impl GameplayScene {
     // Small tool icon next to the pointer, or next to the cursor tile when driven by keys or a gamepad.
     fn draw_cursor_icon(&self, input: &Input, area: Rect) {
-        let Some(icon) = self.tool.filter(|_| self.building()).and_then(Tool::icon) else { return };
+        let icon = match self.tool {
+            _ if !self.building() => return,
+            Some(Tool::Electricity) => PowerItem::PowerLine.icon(),
+            tool => match tool.and_then(Tool::icon) {
+                Some(icon) => icon,
+                None => return,
+            },
+        };
         let at = match (self.pointer_cursor, input.pointer(), self.cursor) {
             (true, Some(pointer), _) if area.contains(pointer) => pointer + vec2(6.0, 6.0),
             (false, _, Some(tile)) => self.camera.tile_origin(tile, area) + Vec2::splat(TILE_SIZE * self.camera.zoom() * 0.75),
