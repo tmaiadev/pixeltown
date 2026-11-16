@@ -163,6 +163,8 @@ pub fn feature_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
 
 const BRIDGE_DECK_ROW: usize = 1;
 const BRIDGE_TRUSS_ROW: usize = 2;
+const CROSSWALK_ROW: usize = 3;
+const DEAD_END_CROSSWALKS: usize = 6;
 
 fn bridge_col(axis: Axis) -> usize {
     match axis {
@@ -182,15 +184,46 @@ fn linked(map: &Map, x: usize, y: usize, dx: i32, dy: i32) -> bool {
     map.road(nx as usize, ny as usize).is_some() && straight(map.road(x, y)) && straight(map.road(nx as usize, ny as usize))
 }
 
+fn street_mask(map: &Map, x: usize, y: usize) -> u8 {
+    CARDINALS
+        .into_iter()
+        .filter(|&(dx, dy, _)| linked(map, x, y, dx, dy))
+        .fold(0u8, |mask, (_, _, bit)| mask | bit)
+}
+
+fn is_junction(map: &Map, x: i32, y: i32) -> bool {
+    Map::in_bounds(x, y)
+        && map.road(x as usize, y as usize) == Some(Road::Street)
+        && street_mask(map, x as usize, y as usize).count_ones() >= 3
+}
+
+// Streets get a pedestrian crossing on each end that meets a junction; dead ends only have the one end.
+fn crosswalk_col(map: &Map, x: usize, y: usize, mask: u8) -> Option<usize> {
+    let (first, second, start) = match mask {
+        m if m == N | S || m == N || m == S => (N, S, 0),
+        m if m == W | E || m == W || m == E => (W, E, 3),
+        _ => return None,
+    };
+    let at = |bit| {
+        let (dx, dy, _) = CARDINALS.into_iter().find(|&(_, _, b)| b == bit).unwrap();
+        mask & bit != 0 && is_junction(map, x as i32 + dx, y as i32 + dy)
+    };
+    match (at(first), at(second)) {
+        (false, false) => None,
+        (near, far) if mask.count_ones() == 2 => Some(start + near as usize + 2 * far as usize - 1),
+        _ => Some(DEAD_END_CROSSWALKS + [N, S, W, E].iter().position(|&b| b == mask).unwrap()),
+    }
+}
+
 // Street sprites are indexed by the N/E/S/W mask; an isolated street is drawn vertical.
 pub fn road_cell(map: &Map, x: usize, y: usize) -> Option<SpriteCell> {
     match map.road(x, y)? {
         Road::Bridge(axis) => Some(SpriteCell::new(bridge_col(axis), BRIDGE_DECK_ROW)),
         Road::Street => {
-            let mask = CARDINALS
-                .into_iter()
-                .filter(|&(dx, dy, _)| linked(map, x, y, dx, dy))
-                .fold(0u8, |mask, (_, _, bit)| mask | bit);
+            let mask = street_mask(map, x, y);
+            if let Some(col) = crosswalk_col(map, x, y, mask) {
+                return Some(SpriteCell::new(col, CROSSWALK_ROW));
+            }
             Some(SpriteCell::new(if mask == 0 { N | S } else { mask } as usize, 0))
         }
     }
@@ -699,6 +732,21 @@ mod tests {
         assert_eq!(road_cell(&map, 1, 1), Some(SpriteCell::new((E | S) as usize, 0)));
         assert_eq!(road_cell(&map, 2, 1), Some(SpriteCell::new(W as usize, 0)));
         assert_eq!(road_cell(&map, 0, 0), None);
+    }
+
+    #[test]
+    fn straight_streets_next_to_junctions_get_crosswalks() {
+        let mut map = map_from(&["#######", "#######", "#######"]);
+        for (x, y) in [(1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (3, 0), (3, 2)] {
+            map.build_road(x, y);
+        }
+        assert_eq!(road_cell(&map, 1, 1), Some(SpriteCell::new(E as usize, 0)));
+        assert_eq!(road_cell(&map, 2, 1), Some(SpriteCell::new(4, CROSSWALK_ROW)));
+        assert_eq!(road_cell(&map, 4, 1), Some(SpriteCell::new(3, CROSSWALK_ROW)));
+        assert_eq!(road_cell(&map, 3, 0), Some(SpriteCell::new(DEAD_END_CROSSWALKS + 1, CROSSWALK_ROW)));
+        assert_eq!(road_cell(&map, 5, 1), Some(SpriteCell::new(W as usize, 0)));
+        map.build_road(2, 2);
+        assert_eq!(road_cell(&map, 2, 1), Some(SpriteCell::new((W | E | S) as usize, 0)));
     }
 
     #[test]
