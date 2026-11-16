@@ -93,6 +93,11 @@ fn chunk_origin(chunk: usize) -> Vec2 {
     vec2((chunk % CHUNKS) as f32, (chunk / CHUNKS) as f32) * CHUNK_PIXELS
 }
 
+pub fn chunk_rect(chunk: usize) -> Rect {
+    let origin = chunk_origin(chunk);
+    Rect::new(origin.x, origin.y, CHUNK_PIXELS, CHUNK_PIXELS)
+}
+
 // Chunks touching the tile or any of its eight neighbors.
 pub fn chunks_around(x: i32, y: i32) -> impl Iterator<Item = usize> {
     let chunk = |v: i32| (v.clamp(0, MAP_SIZE as i32 - 1) as usize) / CHUNK_TILES;

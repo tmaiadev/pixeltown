@@ -14,6 +14,10 @@ impl Perspective {
         }
     }
 
+    pub fn center(&self) -> Vec2 {
+        self.center
+    }
+
     // Offset of a point `height` pixels above `ground`, pushed away from the view center.
     pub fn lean(&self, ground: Vec2, height: f32) -> Vec2 {
         ((ground - self.center) * height / self.altitude).round()
@@ -50,6 +54,25 @@ pub fn draw_strip(texture: &Texture2D, source: Rect, from: Vec2, to: Vec2, width
             ..Default::default()
         },
     );
+}
+
+// Stretches `source` over a four-sided shape, corners in order: top-left, top-right, bottom-right, bottom-left.
+pub fn draw_quad(texture: &Texture2D, source: Rect, corners: [Vec2; 4], tint: Color) {
+    let size = texture.size();
+    let uv = [
+        vec2(source.left(), source.top()),
+        vec2(source.right(), source.top()),
+        vec2(source.right(), source.bottom()),
+        vec2(source.left(), source.bottom()),
+    ];
+    let vertices = std::array::from_fn::<_, 4, _>(|i| {
+        Vertex::new2(corners[i].extend(0.0), uv[i] / size, tint)
+    });
+    draw_mesh(&Mesh {
+        vertices: vertices.to_vec(),
+        indices: vec![0, 1, 2, 0, 2, 3],
+        texture: Some(texture.clone()),
+    });
 }
 
 #[cfg(test)]

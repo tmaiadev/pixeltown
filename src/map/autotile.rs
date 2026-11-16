@@ -467,6 +467,7 @@ mod tests {
             features,
             roads: vec![None; MAP_SIZE * MAP_SIZE],
             power_lines: vec![None; MAP_SIZE * MAP_SIZE],
+            buildings: vec![None; MAP_SIZE * MAP_SIZE],
         }
     }
 

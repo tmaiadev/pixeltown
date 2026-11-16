@@ -1,3 +1,4 @@
+mod buildings;
 pub mod camera;
 mod chunks;
 mod power_lines;
@@ -6,6 +7,7 @@ mod trees;
 use macroquad::prelude::*;
 
 use crate::map::autotile::{self, GroundSprite, SpriteCell};
+use crate::map::buildings::Building;
 use crate::map::{Map, MAP_SIZE};
 use crate::utils::frame_animation::FrameAnimation;
 use crate::utils::spritesheet::Spritesheet;
@@ -23,6 +25,7 @@ pub struct MapView {
     sheet: Spritesheet,
     nature: Spritesheet,
     roads_sheet: Spritesheet,
+    buildings_sheet: Spritesheet,
     water: FrameAnimation,
     cells: Vec<GroundSprite>,
     features: Vec<Option<SpriteCell>>,
@@ -32,6 +35,8 @@ pub struct MapView {
     trees: Vec<autotile::TreeCell>,
     poles: Vec<autotile::WireCell>,
     forest_trunks: Vec<(u16, u16)>,
+    buildings: Vec<Building>,
+    clock: f32,
     ground: ChunkCache,
     canopy: ChunkCache,
     bridges: ChunkCache,
@@ -43,6 +48,7 @@ impl MapView {
             sheet: Spritesheet::from_png(include_bytes!("../../assets/sprites/terrain.png"), TILE_SIZE),
             nature: Spritesheet::from_png(include_bytes!("../../assets/sprites/nature.png"), TILE_SIZE),
             roads_sheet: Spritesheet::from_png(include_bytes!("../../assets/sprites/roads.png"), TILE_SIZE),
+            buildings_sheet: Spritesheet::from_png(include_bytes!("../../assets/sprites/buildings.png"), TILE_SIZE),
             water: FrameAnimation::new(autotile::WATER_FRAMES, WATER_FPS),
             cells: Vec::new(),
             features: Vec::new(),
@@ -52,6 +58,8 @@ impl MapView {
             trees: Vec::new(),
             poles: Vec::new(),
             forest_trunks: Vec::new(),
+            buildings: Vec::new(),
+            clock: 0.0,
             ground: ChunkCache::new(),
             canopy: ChunkCache::new(),
             bridges: ChunkCache::new(),
@@ -69,6 +77,7 @@ impl MapView {
         self.trees = autotile::tree_cells(map);
         self.poles = autotile::wire_cells(map);
         self.forest_trunks = autotile::forest_trunks(map);
+        self.buildings = map.buildings();
         self.bake(0..CHUNKS * CHUNKS);
     }
 
@@ -81,6 +90,7 @@ impl MapView {
         self.trees = autotile::tree_cells(map);
         self.poles = autotile::wire_cells(map);
         self.forest_trunks = autotile::forest_trunks(map);
+        self.buildings = map.buildings();
         let mut dirty: Vec<usize> = tiles.iter().flat_map(|&(x, y)| chunks::chunks_around(x, y)).collect();
         dirty.sort_unstable();
         dirty.dedup();
@@ -89,11 +99,13 @@ impl MapView {
 
     pub fn update(&mut self, dt: f32) {
         self.water.update(dt);
+        self.clock += dt;
     }
 
     fn bake(&mut self, chunks: impl IntoIterator<Item = usize> + Clone) {
         let (cells, features, forests, roads) = (&self.cells, &self.features, &self.forests, &self.roads);
         let (sheet, nature, roads_sheet) = (&self.sheet, &self.nature, &self.roads_sheet);
+        let (buildings, buildings_sheet) = (&self.buildings, &self.buildings_sheet);
         let animated = |chunk| chunks::chunk_tiles(chunk).any(|(_, _, i)| cells[i].is_animated());
         self.ground.render_chunks(
             chunks.clone(),
@@ -114,6 +126,7 @@ impl MapView {
                         roads_sheet.draw_tile(cell, x, y);
                     }
                 }
+                buildings::draw_yards(buildings_sheet, buildings, chunks::chunk_rect(chunk));
             },
         );
         self.canopy.render_chunks(
@@ -141,12 +154,13 @@ impl MapView {
         );
     }
 
-    // Tints one tile, under the map camera set by `draw`.
-    pub fn draw_highlight(&self, camera: &Camera, screen: Vec2, area: Rect, tile: (i32, i32), buildable: bool) {
+    // Tints tiles, under the map camera set by `draw`.
+    pub fn draw_highlight(&self, camera: &Camera, screen: Vec2, area: Rect, tiles: impl IntoIterator<Item = ((i32, i32), bool)>) {
         set_camera(&camera.camera_2d(screen, area));
-        let color = if buildable { BUILD_OK } else { BUILD_BLOCKED };
-        let (x, y) = (tile.0 as f32 * TILE_SIZE, tile.1 as f32 * TILE_SIZE);
-        draw_rectangle(x, y, TILE_SIZE, TILE_SIZE, color);
+        for ((x, y), buildable) in tiles {
+            let color = if buildable { BUILD_OK } else { BUILD_BLOCKED };
+            draw_rectangle(x as f32 * TILE_SIZE, y as f32 * TILE_SIZE, TILE_SIZE, TILE_SIZE, color);
+        }
     }
 
     pub fn draw(&self, camera: &Camera, screen: Vec2, area: Rect, grid_visible: bool) {
@@ -159,10 +173,12 @@ impl MapView {
         let perspective = camera.perspective(viewport);
         trees::draw_shadows(&self.nature, &self.trees, visible);
         power_lines::draw_shadows(&self.poles, visible);
+        buildings::draw_shadows(&self.buildings, visible);
         trees::draw_trunks(&self.nature, &self.forest_trunks, visible, &perspective);
         self.bridges.draw_raised(visible, &perspective, BRIDGE_HEIGHT);
         self.canopy.draw_raised(visible, &perspective, trees::TREE_HEIGHT);
         trees::draw_trees(&self.nature, &self.trees, visible, &perspective);
+        buildings::draw(&self.buildings_sheet, &self.buildings, visible, &perspective, self.clock);
         power_lines::draw_poles(&self.poles, visible, &perspective);
 
         if grid_visible {

@@ -9,6 +9,7 @@ use macroquad::prelude::*;
 
 use super::Scene;
 use crate::input::{Action, Device, Input};
+use crate::map::buildings::BuildingKind;
 use crate::map::save::{self, SaveError};
 use crate::map::{Map, TerrainType, MAP_SIZE};
 use crate::map_view::camera::{Camera, Motion, TILE_SIZE};
@@ -36,7 +37,7 @@ pub struct GameplayScene {
     focus: Tool,
     focus_visible: bool,
     power_focus: PowerItem,
-    power_line: bool,
+    placing: Option<PowerItem>,
     cursor: Option<(i32, i32)>,
     pointer_cursor: bool,
     drag_from: Option<(i32, i32)>,
@@ -64,7 +65,7 @@ impl GameplayScene {
             focus: Tool::Roads,
             focus_visible: false,
             power_focus: PowerItem::PowerLine,
-            power_line: false,
+            placing: None,
             cursor: None,
             pointer_cursor: false,
             drag_from: None,
@@ -97,27 +98,39 @@ impl GameplayScene {
         self.tool = (self.tool != Some(tool)).then_some(tool);
         self.cursor = None;
         self.power_focus = PowerItem::PowerLine;
-        self.power_line = false;
+        self.placing = None;
     }
 
     fn submenu_open(&self) -> bool {
-        self.tool == Some(Tool::Electricity) && !self.power_line
+        self.tool == Some(Tool::Electricity) && self.placing.is_none()
     }
 
     fn building(&self) -> bool {
         match self.tool {
             Some(Tool::Roads | Tool::Bulldoze) => true,
-            Some(Tool::Electricity) => self.power_line,
+            Some(Tool::Electricity) => self.placing.is_some(),
             _ => false,
         }
     }
 
-    // Only power lines can be built so far; the plants have no effect yet.
+    // Roads, power lines and the bulldozer paint along a drag; a building is placed once per click.
+    fn paints(&self) -> bool {
+        self.building() && self.placing.and_then(PowerItem::building).is_none()
+    }
+
+    // Only power lines and the coal plant can be built so far; the other plants have no effect yet.
     fn pick_power_item(&mut self, item: PowerItem) {
         self.power_focus = item;
-        if item == PowerItem::PowerLine {
-            self.power_line = true;
+        if item == PowerItem::PowerLine || item.building().is_some() {
+            self.placing = Some(item);
             self.cursor = None;
+        }
+    }
+
+    fn placing_building(&self) -> Option<BuildingKind> {
+        match self.tool {
+            Some(Tool::Electricity) => self.placing.and_then(PowerItem::building),
+            _ => None,
         }
     }
 
@@ -127,29 +140,52 @@ impl GameplayScene {
     }
 
     fn apply_at(&mut self, x: i32, y: i32) {
-        let changed = match self.tool {
-            Some(Tool::Roads) => self.map.build_road(x, y),
-            Some(Tool::Bulldoze) => self.map.bulldoze(x, y),
-            Some(Tool::Electricity) => self.map.build_power_line(x, y),
+        // A building changes every tile it covers, not just the one aimed at.
+        let mut touched = vec![(x, y)];
+        let changed = match (self.tool, self.placing_building()) {
+            (Some(Tool::Roads), _) => self.map.build_road(x, y),
+            (Some(Tool::Bulldoze), _) => {
+                if let Some(building) = Map::in_bounds(x, y).then(|| self.map.building_at(x as usize, y as usize)).flatten() {
+                    touched = building.tiles().collect();
+                }
+                self.map.bulldoze(x, y)
+            }
+            (Some(Tool::Electricity), Some(kind)) => {
+                touched = kind.tiles(kind.origin((x, y))).collect();
+                self.map.build_building(kind, (x, y))
+            }
+            (Some(Tool::Electricity), None) => self.map.build_power_line(x, y),
             _ => false,
         };
         if changed {
-            self.built.push((x, y));
+            self.built.extend(touched);
         }
     }
 
-    fn can_apply(&self, x: i32, y: i32) -> bool {
-        match self.tool {
+    // The tiles the tool would act on at the cursor, each with whether it can be built on.
+    fn preview(&self, x: i32, y: i32) -> Vec<((i32, i32), bool)> {
+        if let Some(kind) = self.placing_building() {
+            // Red marks the tiles in the way; a footprint sticking out of the map is red all over.
+            let tiles: Vec<_> = kind.tiles(kind.origin((x, y))).collect();
+            let inside = tiles.iter().all(|&(tx, ty)| Map::in_bounds(tx, ty));
+            return tiles
+                .into_iter()
+                .filter(|&(tx, ty)| Map::in_bounds(tx, ty))
+                .map(|tile| (tile, inside && self.map.can_build_building_on(tile.0, tile.1)))
+                .collect();
+        }
+        let buildable = match self.tool {
             Some(Tool::Roads) => self.map.can_build_road(x, y),
             Some(Tool::Bulldoze) => self.map.can_bulldoze(x, y),
             Some(Tool::Electricity) => self.map.can_build_power_line(x, y),
             _ => false,
-        }
+        };
+        vec![((x, y), buildable)]
     }
 
     // Applies the tool between the last painted tile and the cursor while the button is held.
     fn drag_tool(&mut self, input: &Input) {
-        if !input.pointer_held() || !self.building() {
+        if !input.pointer_held() || !self.paints() {
             self.drag_from = None;
             return;
         }
@@ -281,7 +317,10 @@ impl GameplayScene {
     fn draw_cursor_icon(&self, input: &Input, area: Rect) {
         let icon = match self.tool {
             _ if !self.building() => return,
-            Some(Tool::Electricity) => PowerItem::PowerLine.icon(),
+            Some(Tool::Electricity) => match self.placing {
+                Some(item) => item.icon(),
+                None => return,
+            },
             tool => match tool.and_then(Tool::icon) {
                 Some(icon) => icon,
                 None => return,
@@ -354,8 +393,7 @@ impl Scene for GameplayScene {
         let area = map_area(viewport);
         self.view.draw(&self.camera, viewport, area, self.building());
         if let (true, Some((x, y))) = (self.building(), self.cursor) {
-            let buildable = self.can_apply(x, y);
-            self.view.draw_highlight(&self.camera, viewport, area, (x, y), buildable);
+            self.view.draw_highlight(&self.camera, viewport, area, self.preview(x, y));
         }
 
         set_internal_camera();

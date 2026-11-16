@@ -37,13 +37,32 @@ impl Spritesheet {
     }
 
     fn inset_source(tile_size: f32, cell: SpriteCell) -> Rect {
-        let rect = Self::source(tile_size, cell);
+        Self::inset(Self::source(tile_size, cell))
+    }
+
+    // Trims `rect` so stretching it never samples the pixels around it.
+    pub fn inset(rect: Rect) -> Rect {
         Rect::new(
             rect.x + BLEED_INSET,
             rect.y + BLEED_INSET,
             rect.w - 2.0 * BLEED_INSET,
             rect.h - 2.0 * BLEED_INSET,
         )
+    }
+
+    // Draws a free rectangle of the sheet, stretched to `dest`.
+    pub fn draw_sprite(&self, sprite: Rect, dest: Rect, tint: Color) {
+        draw_texture_ex(
+            &self.texture,
+            dest.x,
+            dest.y,
+            tint,
+            DrawTextureParams {
+                dest_size: Some(dest.size()),
+                source: Some(Self::inset(sprite)),
+                ..Default::default()
+            },
+        );
     }
 
     pub fn draw_tile(&self, cell: SpriteCell, x: f32, y: f32) {

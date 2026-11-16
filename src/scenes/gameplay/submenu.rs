@@ -3,6 +3,7 @@ use macroquad::prelude::*;
 use super::toolbar::{draw_tooltip, Toolbar};
 use crate::input::Action;
 use crate::map::autotile::SpriteCell;
+use crate::map::buildings::BuildingKind;
 use crate::ui::panel::{draw_button, draw_panel, ButtonState};
 use crate::utils::spritesheet::Spritesheet;
 
@@ -56,6 +57,14 @@ impl PowerItem {
             PowerItem::Solar => "Solar Power Plant",
             PowerItem::Wind => "Wind Power Plant",
             PowerItem::Nuclear => "Nuclear Power Plant",
+        }
+    }
+
+    // What this item builds, when it is a building rather than a power line.
+    pub fn building(self) -> Option<BuildingKind> {
+        match self {
+            PowerItem::Coal => Some(BuildingKind::CoalPlant),
+            _ => None,
         }
     }
 
@@ -161,6 +170,12 @@ mod tests {
         assert_eq!(move_focus(PowerItem::PowerLine, Action::Left), PowerItem::Nuclear);
         assert_eq!(move_focus(PowerItem::Nuclear, Action::Right), PowerItem::PowerLine);
         assert_eq!(move_focus(PowerItem::Coal, Action::Up), PowerItem::Coal);
+    }
+
+    #[test]
+    fn only_the_coal_plant_builds_a_building() {
+        let builders: Vec<_> = PowerItem::ALL.into_iter().filter(|i| i.building().is_some()).collect();
+        assert_eq!(builders, vec![PowerItem::Coal]);
     }
 
     #[test]

@@ -1,8 +1,10 @@
 pub mod autotile;
+pub mod buildings;
 pub mod rng;
 pub mod save;
 
 use autotile::Wiring;
+use buildings::{Building, BuildingKind, BuildingTile};
 use rng::{fbm, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -113,6 +115,7 @@ pub struct Map {
     features: Vec<Option<Feature>>,
     roads: Vec<Option<Road>>,
     power_lines: Vec<Option<PowerLine>>,
+    buildings: Vec<Option<BuildingTile>>,
 }
 
 impl Map {
@@ -135,6 +138,7 @@ impl Map {
             features,
             roads: vec![None; MAP_SIZE * MAP_SIZE],
             power_lines: vec![None; MAP_SIZE * MAP_SIZE],
+            buildings: vec![None; MAP_SIZE * MAP_SIZE],
         }
     }
 
@@ -156,6 +160,53 @@ impl Map {
 
     pub fn power_line(&self, x: usize, y: usize) -> Option<PowerLine> {
         self.power_lines[idx(x, y)]
+    }
+
+    // The building covering this tile, by the top-left tile of its footprint.
+    pub fn building_at(&self, x: usize, y: usize) -> Option<Building> {
+        let tile = self.buildings[idx(x, y)]?;
+        Some(Building { kind: tile.kind, x: (x - tile.dx as usize) as u16, y: (y - tile.dy as usize) as u16 })
+    }
+
+    // Row-major by top-left tile.
+    pub fn buildings(&self) -> Vec<Building> {
+        (0..MAP_SIZE * MAP_SIZE)
+            .filter(|&i| matches!(self.buildings[i], Some(BuildingTile { dx: 0, dy: 0, .. })))
+            .filter_map(|i| self.building_at(i % MAP_SIZE, i / MAP_SIZE))
+            .collect()
+    }
+
+    // Buildings need dry, free ground; trees and forests do not count, they are cleared.
+    pub fn can_build_building_on(&self, x: i32, y: i32) -> bool {
+        if !Self::in_bounds(x, y) {
+            return false;
+        }
+        let (x, y) = (x as usize, y as usize);
+        self.terrain(x, y) != Terrain::Water
+            && self.feature(x, y) != Some(Feature::Rock)
+            && self.road(x, y).is_none()
+            && self.power_line(x, y).is_none()
+            && self.building_at(x, y).is_none()
+    }
+
+    // `center` is the tile the footprint is centered on.
+    pub fn can_build_building(&self, kind: BuildingKind, center: (i32, i32)) -> bool {
+        kind.tiles(kind.origin(center)).all(|(x, y)| self.can_build_building_on(x, y))
+    }
+
+    // Clears trees and forests under the footprint; returns whether the building was placed.
+    pub fn build_building(&mut self, kind: BuildingKind, center: (i32, i32)) -> bool {
+        if !self.can_build_building(kind, center) {
+            return false;
+        }
+        let origin = kind.origin(center);
+        for (x, y) in kind.tiles(origin) {
+            let i = idx(x as usize, y as usize);
+            let (dx, dy) = ((x - origin.0) as u8, (y - origin.1) as u8);
+            self.buildings[i] = Some(BuildingTile { kind, dx, dy });
+            self.features[i] = None;
+        }
+        true
     }
 
     // The axis a power line bridge placed on this water tile would run along: it must continue
@@ -181,7 +232,7 @@ impl Map {
             return false;
         }
         let (x, y) = (x as usize, y as usize);
-        if self.power_line(x, y).is_some() || self.feature(x, y) == Some(Feature::Rock) {
+        if self.power_line(x, y).is_some() || self.building_at(x, y).is_some() || self.feature(x, y) == Some(Feature::Rock) {
             return false;
         }
         self.terrain(x, y) != Terrain::Water || (self.road(x, y).is_none() && self.power_bridge_axis(x, y).is_some())
@@ -225,7 +276,7 @@ impl Map {
             return false;
         }
         let (x, y) = (x as usize, y as usize);
-        if self.road(x, y).is_some() || self.feature(x, y) == Some(Feature::Rock) {
+        if self.road(x, y).is_some() || self.building_at(x, y).is_some() || self.feature(x, y) == Some(Feature::Rock) {
             return false;
         }
         self.terrain(x, y) != Terrain::Water || (self.power_line(x, y).is_none() && self.bridge_axis(x, y).is_some())
@@ -249,18 +300,29 @@ impl Map {
     pub fn can_bulldoze(&self, x: i32, y: i32) -> bool {
         Self::in_bounds(x, y) && {
             let (x, y) = (x as usize, y as usize);
-            self.power_line(x, y).is_some() || self.road(x, y).is_some() || self.feature(x, y).is_some()
+            self.power_line(x, y).is_some()
+                || self.road(x, y).is_some()
+                || self.building_at(x, y).is_some()
+                || self.feature(x, y).is_some()
         }
     }
 
-    // Removes what is on top of the tile (a power line), else the road, else the tree, forest or rock; returns whether anything was removed.
+    // Removes what is on top of the tile (a power line), else the road, else the whole building, else the tree, forest or rock; returns whether anything was removed.
     pub fn bulldoze(&mut self, x: i32, y: i32) -> bool {
         if !self.can_bulldoze(x, y) {
             return false;
         }
         let i = idx(x as usize, y as usize);
-        if self.power_lines[i].take().is_none() && self.roads[i].take().is_none() {
-            self.features[i] = None;
+        if self.power_lines[i].take().is_some() || self.roads[i].take().is_some() {
+            return true;
+        }
+        match self.building_at(x as usize, y as usize) {
+            Some(building) => {
+                for (bx, by) in building.tiles() {
+                    self.buildings[idx(bx as usize, by as usize)] = None;
+                }
+            }
+            None => self.features[i] = None,
         }
         true
     }
@@ -537,6 +599,93 @@ mod tests {
     use super::*;
 
     const SEEDS: [u64; 5] = [1, 7, 42, 1234, 99_999];
+
+    // A 5x5 patch of dry grass with nothing on it, away from the borders.
+    fn clear_ground() -> Map {
+        let mut map = Map::generate(TerrainType::Inland, 42);
+        for y in 30..40 {
+            for x in 30..40 {
+                let i = idx(x, y);
+                map.tiles[i] = Terrain::Grass;
+                map.features[i] = None;
+                map.roads[i] = None;
+                map.power_lines[i] = None;
+            }
+        }
+        map
+    }
+
+    #[test]
+    fn coal_plant_fills_its_footprint_around_the_center() {
+        let mut map = clear_ground();
+        assert!(map.build_building(BuildingKind::CoalPlant, (34, 34)));
+        let plant = Building { kind: BuildingKind::CoalPlant, x: 32, y: 32 };
+        assert_eq!(map.buildings(), vec![plant]);
+        for (x, y) in plant.tiles() {
+            assert_eq!(map.building_at(x as usize, y as usize), Some(plant));
+        }
+        assert_eq!(map.building_at(31, 32), None);
+        assert_eq!(map.building_at(37, 32), None);
+    }
+
+    #[test]
+    fn buildings_cannot_overlap_or_sit_on_water_rocks_roads_or_lines() {
+        let mut map = clear_ground();
+        assert!(map.build_building(BuildingKind::CoalPlant, (34, 34)));
+        assert!(!map.build_building(BuildingKind::CoalPlant, (36, 34)));
+        assert!(map.build_building(BuildingKind::CoalPlant, (39, 34)));
+
+        let kind = BuildingKind::CoalPlant;
+        let mut blocked = clear_ground();
+        blocked.tiles[idx(33, 33)] = Terrain::Water;
+        assert!(!blocked.can_build_building(kind, (34, 34)));
+        let mut blocked = clear_ground();
+        blocked.features[idx(35, 36)] = Some(Feature::Rock);
+        assert!(!blocked.can_build_building(kind, (34, 34)));
+        let mut blocked = clear_ground();
+        assert!(blocked.build_road(36, 34));
+        assert!(!blocked.can_build_building(kind, (34, 34)));
+        let mut blocked = clear_ground();
+        assert!(blocked.build_power_line(32, 36));
+        assert!(!blocked.can_build_building(kind, (34, 34)));
+    }
+
+    #[test]
+    fn buildings_must_fit_inside_the_map() {
+        let map = Map::generate(TerrainType::Inland, 42);
+        assert!(!map.can_build_building(BuildingKind::CoalPlant, (0, 0)));
+        assert!(!map.can_build_building(BuildingKind::CoalPlant, (MAP_SIZE as i32 - 1, 100)));
+    }
+
+    #[test]
+    fn building_clears_trees_and_forests() {
+        let mut map = clear_ground();
+        map.features[idx(34, 34)] = Some(Feature::Forest);
+        map.features[idx(32, 32)] = Some(Feature::Tree);
+        assert!(map.build_building(BuildingKind::CoalPlant, (34, 34)));
+        assert_eq!(map.feature(34, 34), None);
+        assert_eq!(map.feature(32, 32), None);
+    }
+
+    #[test]
+    fn roads_and_power_lines_cannot_be_built_on_a_building() {
+        let mut map = clear_ground();
+        assert!(map.build_building(BuildingKind::CoalPlant, (34, 34)));
+        assert!(!map.can_build_road(34, 34));
+        assert!(!map.can_build_power_line(32, 36));
+        assert!(map.can_build_road(31, 34));
+    }
+
+    #[test]
+    fn bulldozing_any_tile_removes_the_whole_building() {
+        let mut map = clear_ground();
+        assert!(map.build_building(BuildingKind::CoalPlant, (34, 34)));
+        assert!(map.can_bulldoze(36, 36));
+        assert!(map.bulldoze(36, 36));
+        assert!(map.buildings().is_empty());
+        assert!(map.can_build_building(BuildingKind::CoalPlant, (34, 34)));
+        assert!(!map.bulldoze(34, 34));
+    }
 
     #[test]
     fn bulldoze_removes_roads_and_features() {
